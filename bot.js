@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const { registerCommands } = require('./routes/register');
 require('dotenv').config();
+const path = require('path');
 const { ActivityType } = require('discord.js');
 const client = new Client({ intents: [GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
