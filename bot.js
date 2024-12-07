@@ -31,7 +31,7 @@ client.once('ready', () => {
     // Set the bot's streaming activity
     client.user.setActivity('Currecny', {
         type: ActivityType.Streaming,
-        url: 'https://www.twitch.tv/YourTwitchChannel'
+        url: 'https://www.twitch.tv/.'
     });
 
     console.log('🎥 Bot is now streaming!');
