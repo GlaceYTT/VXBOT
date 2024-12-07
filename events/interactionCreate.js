@@ -13,7 +13,7 @@ const Transaction = require('../models/Transaction');
 const countries = require('../data/countries.json');
 const cryptos = require('../data/cryptos.json');
 const tempData = require('../data/tempData');
-const TARGET_SERVER_ID = '1311747616429576313';
+const TARGET_SERVER_ID = '1312775999934562374';
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
 module.exports = async (client, interaction) => {
@@ -705,7 +705,7 @@ module.exports = async (client, interaction) => {
 
                     
 
-                    const specificChannelId = '1313135236724293675'; // Replace with your specific channel ID.
+                    const specificChannelId = '1311777230669479946'; // Replace with your specific channel ID.
     const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
 
     if (specificChannel) {
