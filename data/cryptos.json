@@ -1,0 +1,99 @@
+{
+    "cryptos": {
+        "Bitcoin": {
+            "send": ["Wallet Transfer", "QR Code Scan"],
+            "receive": ["Wallet Address", "QR Code Scan"]
+        },
+        "Ethereum": {
+            "send": ["Wallet Transfer", "Smart Contract Transfer"],
+            "receive": ["Wallet Address", "Smart Contract Transfer"]
+        },
+        "USDT": {
+            "send": ["TRC-20 Transfer", "ERC-20 Transfer"],
+            "receive": ["TRC-20 Wallet", "ERC-20 Wallet"]
+        }
+    },
+    "cryptoModalQuestions": {
+        "sendingDetails": {
+            "default": [
+                {
+                    "id": "wallet_address",
+                    "label": "Enter Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Enter Amount",
+                    "required": true
+                },
+                {
+                    "id": "transaction_reference",
+                    "label": "Transaction Reference (Optional)",
+                    "required": false
+                }
+            ],
+            "Bitcoin": [
+                {
+                    "id": "wallet_address",
+                    "label": "Enter Bitcoin Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Enter Bitcoin Amount",
+                    "required": true
+                }
+            ],
+            "USDT": [
+                {
+                    "id": "wallet_address",
+                    "label": "Enter USDT Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "network_type",
+                    "label": "Select Network (TRC-20/ERC-20)",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Enter USDT Amount",
+                    "required": true
+                }
+            ]
+        },
+        "receivingDetails": {
+            "default": [
+                {
+                    "id": "receive_wallet_address",
+                    "label": "Enter Receiving Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Enter Receiving Amount",
+                    "required": true
+                }
+            ],
+            "Ethereum": [
+                {
+                    "id": "receive_wallet_address",
+                    "label": "Enter Ethereum Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "smart_contract",
+                    "label": "Smart Contract Details (Optional)",
+                    "required": false
+                }
+            ]
+        }
+    },
+    "methodDetails": {
+        "Wallet Transfer": "Transfer directly to the recipient's wallet address.",
+        "QR Code Scan": "Scan the recipient's QR code for payment.",
+        "Smart Contract Transfer": "Use Ethereum smart contracts for secure transactions.",
+        "TRC-20 Transfer": "Use TRC-20 blockchain for transactions.",
+        "ERC-20 Transfer": "Use ERC-20 blockchain for transactions."
+    }
+}

@@ -1,0 +1,169 @@
+{
+    "continents": {
+        "International": [],
+        "Asia": ["China", "India", "Japan"],
+        "Africa": ["Nigeria", "South Africa", "Egypt"],
+        "North America": ["United States", "Canada", "Mexico"],
+        "South America": ["Brazil", "Argentina", "Chile"],
+        "Antarctica": [],
+        "Europe": ["Germany", "France", "United Kingdom"],
+        "Australia/Oceania": ["Australia", "New Zealand", "Fiji"]
+    },
+    "currencies": {
+        "China": "CNY",
+        "India": "INR",
+        "Japan": "JPY",
+        "Nigeria": "NGN",
+        "South Africa": "ZAR",
+        "Egypt": "EGP",
+        "United States": "USD",
+        "Canada": "CAD",
+        "Mexico": "MXN",
+        "Brazil": "BRL",
+        "Argentina": "ARS",
+        "Chile": "CLP",
+        "Germany": "EUR",
+        "France": "EUR",
+        "United Kingdom": "GBP",
+        "Australia": "AUD",
+        "New Zealand": "NZD",
+        "Fiji": "FJD"
+    },
+    "emojiMappings": {
+        "Asia": "🌏",
+        "China": "🇨🇳",
+        "India": "🇮🇳",
+        "Japan": "🇯🇵",
+        "Africa": "🌍",
+        "Nigeria": "🇳🇬",
+        "South Africa": "🇿🇦",
+        "Egypt": "🇪🇬",
+        "North America": "🌎",
+        "United States": "🇺🇸",
+        "Canada": "🇨🇦",
+        "Mexico": "🇲🇽",
+        "South America": "🌎",
+        "Brazil": "🇧🇷",
+        "Argentina": "🇦🇷",
+        "Chile": "🇨🇱",
+        "Europe": "🌍",
+        "Germany": "🇩🇪",
+        "France": "🇫🇷",
+        "United Kingdom": "🇬🇧",
+        "Australia/Oceania": "🌏",
+        "Australia": "🇦🇺",
+        "New Zealand": "🇳🇿",
+        "Fiji": "🇫🇯"
+    },
+    "modalQuestions": {
+        "sendingDetails": {
+            "default": [
+                {
+                    "id": "amount",
+                    "label": "Amount to Send",
+                    "required": true
+                },
+                {
+                    "id": "payment_method",
+                    "label": "Preferred Payment Method",
+                    "required": true
+                },
+                {
+                    "id": "send_reference",
+                    "label": "Reference (Optional)",
+                    "required": false
+                }
+            ],
+            "India": [
+                {
+                    "id": "upi_id",
+                    "label": "UPI ID",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Amount to Send",
+                    "required": true
+                },
+                {
+                    "id": "bank_account",
+                    "label": "Bank Account Number",
+                    "required": false
+                }
+            ],
+            "United States": [
+                {
+                    "id": "amount",
+                    "label": "Amount to Send",
+                    "required": true
+                },
+                {
+                    "id": "card_details",
+                    "label": "Credit Card Details",
+                    "required": true
+                }
+            ]
+        },
+        "receivingDetails": {
+            "default": [
+                {
+                    "id": "receive_amount",
+                    "label": "Amount to Receive",
+                    "required": true
+                },
+                {
+                    "id": "collection_method",
+                    "label": "Collection Method",
+                    "required": true
+                },
+                {
+                    "id": "pickup_reference",
+                    "label": "Pickup Reference (Optional)",
+                    "required": false
+                }
+            ],
+            "India": [
+                {
+                    "id": "amount",
+                    "label": "Amount to Receive",
+                    "required": true
+                },
+                {
+                    "id": "govt_id",
+                    "label": "Government ID (Required for Pickup)",
+                    "required": true
+                }
+            ],
+            "United States": [
+                {
+                    "id": "amount",
+                    "label": "Amount to Receive",
+                    "required": true
+                },
+                {
+                    "id": "bank_account",
+                    "label": "Bank Account Number for ACH",
+                    "required": true
+                }
+            ]
+        }
+    },
+    "paymentMethods": {
+        "United States": {
+            "send": ["Wire Transfer", "Credit Card"],
+            "receive": ["ACH Transfer", "Cash Pickup"]
+        },
+        "India": {
+            "send": ["UPI", "Bank Transfer"],
+            "receive": ["Cash Pickup", "Bank Transfer"]
+        }
+    },
+    "methodDetails": {
+        "UPI": "UPI ID: shiva@ybl",
+        "Bank Transfer": "Account No: 12345678, IFSC: ABCD0123456",
+        "Cash Pickup": "Provide valid government ID.",
+        "Wire Transfer": "SWIFT Code required for international transactions.",
+        "Credit Card": "Only Visa and MasterCard are supported.",
+        "ACH Transfer": "Provide valid routing and account numbers."
+    }
+}
