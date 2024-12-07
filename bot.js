@@ -25,7 +25,17 @@ for (const file of eventFiles) {
     client.on(eventName, event.bind(null, client));
     
 }
+client.once('ready', () => {
+    console.log(`🤖 Logged in as ${client.user.tag}!`);
 
+    // Set the bot's streaming activity
+    client.user.setActivity('Currecny', {
+        type: ActivityType.Streaming,
+        url: 'https://www.twitch.tv/YourTwitchChannel'
+    });
+
+    console.log('🎥 Bot is now streaming!');
+});
 const express = require("express");
 const app = express();
 const port = 3000;
