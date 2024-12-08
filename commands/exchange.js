@@ -6,9 +6,10 @@ const {
     ButtonBuilder,
     ButtonStyle
 } = require('discord.js');
-const countries = require('../data/countries.json'); // Load JSON data
-const tempData = require('../data/tempData'); // Shared in-memory store
+const countries = require('../data/countries.json');
+const cryptos = require('../data/cryptos.json');
 const PremiumServer = require('../models/PremiumServer');
+const Transaction = require('../models/Transaction');
 const interfaceIcons = require('../UI/icons');
 
 module.exports = {
@@ -24,7 +25,6 @@ module.exports = {
             return interaction.reply({ content: 'This command must be run in a server.', ephemeral: true });
         }
 
-        // Fetch premium status of the server
         let isPremium;
         try {
             isPremium = await PremiumServer.findOne({ serverId: guild.id });
@@ -45,15 +45,25 @@ module.exports = {
             userType: isPremium ? 'Premium' : 'Free'
         };
 
-        // Store server details in tempData for use in further steps
-        tempData.set(user.id, serverDetails);
+        // Create a new transaction for the user
+        const transaction = new Transaction({
+            userId: user.id,
+            username: user.username,
+            serverId: serverDetails.serverId,
+            serverName: serverDetails.serverName,
+            ownerId: serverDetails.ownerId,
+            ownerName: serverDetails.ownerName,
+            status: 'Pending',
+            userType: serverDetails.userType
+        });
+
+        await transaction.save();
 
         // Respond based on the server type
         const serverMessage = isPremium
             ? 'You are using <a:d1:1312681838640365669> **Premium Version**.\n- **No extra commission fees apply!**'
             : 'You are using <a:918203450498629692:1312685580395479110> **Free Version**.\n- **Extra commission fees may apply**.';
 
-        // Prepare embed message
         const embed1 = new EmbedBuilder()
             .setDescription(`- ${serverMessage}\n- Please check your DMs to continue the process.`)
             .setColor(isPremium ? 0xFFD700 : 0x00AE86)
@@ -87,7 +97,6 @@ module.exports = {
             ephemeral: true
         });
 
-        // Prepare the DM embed
         const embed = new EmbedBuilder()
             .setAuthor({
                 name: 'VX Bot',
