@@ -86,6 +86,18 @@
                     "label": "Smart Contract Details (Optional)",
                     "required": false
                 }
+            ],
+            "Bitcoin": [
+                {
+                    "id": "wallet_address",
+                    "label": "Enter Bitcoin Wallet Address",
+                    "required": true
+                },
+                {
+                    "id": "amount",
+                    "label": "Enter Bitcoin Amount",
+                    "required": true
+                }
             ]
         }
     },
