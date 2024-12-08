@@ -10,12 +10,16 @@ const {
     ButtonStyle
 } = require('discord.js');
 const Transaction = require('../models/Transaction');
+const Rating = require('../models/Ratings');
 const countries = require('../data/countries.json');
 const cryptos = require('../data/cryptos.json');
 const tempData = require('../data/tempData');
-const TARGET_SERVER_ID = '1312775999934562374';
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
+
+const TARGET_SERVER_ID = '1311747616429576313';
+const RATING_GUILD_ID = '';
+const RATING_CHANNEL_ID = '';
 module.exports = async (client, interaction) => {
     if (interaction.isCommand()) {
         const command = client.commands.get(interaction.commandName);
@@ -33,17 +37,17 @@ module.exports = async (client, interaction) => {
         const { customId, values, user } = interaction;
         if (customId === 'select_transaction_type') {
             const transactionType = values[0];
-            
-            // Save temporary data for flow direction
-            const serverDetails = tempData.get(user.id) || {};
-            serverDetails.flowType = transactionType;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            transaction.type = transactionType;
+            await transaction.save();
         
             const embed = new EmbedBuilder()
-                .setAuthor({ 
-                    name: 'Select Sending Type', 
-                    iconURL: interfaceIcons.selectIcon 
-                })
+                .setAuthor({ name: 'Select Sending Type', iconURL: interfaceIcons.selectIcon })
                 .setDescription('Choose the type of sending method for your transaction.')
                 .setColor(0x00AE86);
         
@@ -52,68 +56,85 @@ module.exports = async (client, interaction) => {
                     .setCustomId('select_sending_type')
                     .setPlaceholder('Choose sending method')
                     .addOptions([
-                        { label: transactionType === 'Currency' ? 'Currency' : 'Cryptocurrency', value: transactionType },
-                        { label: transactionType === 'Currency' ? 'Cryptocurrency' : 'Currency', value: transactionType === 'Currency' ? 'Crypto' : 'Currency' }
+                        { label: 'Currency', value: 'Currency', emoji: '💵' },
+                        { label: 'Cryptocurrency', value: 'Crypto', emoji: '🪙' }
                     ])
             );
         
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
+        
         if (customId === 'select_sending_type') {
             const sendingType = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.sendingType = sendingType;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
-            // Handling sending type selection based on transaction flow
+            if (!transaction) {
+                return interaction.update({ 
+                    content: 'Transaction not found. Please restart the process.', 
+                    components: [] 
+                });
+            }
+        
+            // Update the transaction with the selected sending type
+            transaction.type = sendingType; // Update the main type (Currency/Crypto)
+            await transaction.save();
+        
             if (sendingType === 'Currency') {
-                // Currency sending flow
+                // Currency flow: Present continent options dynamically
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: 'Select Continent', iconURL: interfaceIcons.continentIcon })
-                    .setDescription('Choose a **continent** to start your currency transaction.')
+                    .setDescription('Choose a continent for your currency transaction.')
                     .setColor(0x00AE86);
         
                 const row = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId('select_sending_continent')
                         .setPlaceholder('Choose a continent')
-                        .addOptions(Object.keys(countries.continents).map(continent => {
-                            const emoji = countries.emojiMappings[continent] || ''; 
-                            return {
-                                label: `${emoji} ${continent}`, 
-                                value: continent 
-                            };
-                        }))
+                        .addOptions(
+                            Object.keys(countries.continents).map(continent => ({
+                                label: `${countries.emojiMappings[continent] || ''} ${continent}`,
+                                value: continent
+                            }))
+                        )
                 );
         
                 await interaction.update({ embeds: [embed], components: [row] });
             } else {
-                // Crypto sending flow
+                // Crypto flow: Present cryptocurrency options dynamically
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: 'Select Cryptocurrency', iconURL: interfaceIcons.cryptoIcon })
-                    .setDescription('Choose a **cryptocurrency** to start your transaction.')
+                    .setDescription('Choose a cryptocurrency for your transaction.')
                     .setColor(0x00AE86);
         
                 const row = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId('select_sending_crypto')
                         .setPlaceholder('Choose a cryptocurrency')
-                        .addOptions(Object.keys(cryptos.cryptos).map((crypto) => ({
-                            label: crypto,
-                            value: crypto,
-                        })))
+                        .addOptions(
+                            Object.keys(cryptos.cryptos).map(crypto => ({
+                                label: crypto,
+                                value: crypto
+                            }))
+                        )
                 );
         
                 await interaction.update({ embeds: [embed], components: [row] });
             }
         }
         
+        
         if (customId === 'select_sending_crypto') {
             const sendingCrypto = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.sendingCrypto = sendingCrypto;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            // Save the sending cryptocurrency type
+            transaction.sendingCryptoType = sendingCrypto;
+            await transaction.save();
         
             const paymentMethods = cryptos.cryptos[sendingCrypto].send;
         
@@ -126,26 +147,27 @@ module.exports = async (client, interaction) => {
                 new StringSelectMenuBuilder()
                     .setCustomId('select_crypto_sending_method')
                     .setPlaceholder('Choose a payment method')
-                    .addOptions(
-                        paymentMethods.map((method) => ({
-                            label: method,
-                            value: method,
-                        }))
-                    )
+                    .addOptions(paymentMethods.map(method => ({ label: method, value: method })))
             );
         
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
+        
         if (customId === 'select_crypto_sending_method') {
             const sendingMethod = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.sendingMethod = sendingMethod;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
-            // Determine the receiving type based on the original transaction type
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            // Save the sending method
+            transaction.sendMethod = sendingMethod;
+            await transaction.save();
+        
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Select Receiving Type', iconURL: interfaceIcons.continentIcon })
+                .setAuthor({ name: 'Select Receiving Type', iconURL: interfaceIcons.paymentIcon })
                 .setDescription('Choose how you want to receive the transaction.')
                 .setColor(0x00AE86);
         
@@ -162,35 +184,33 @@ module.exports = async (client, interaction) => {
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
+        
         if (customId === 'select_sending_continent') {
             const sendingContinent = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.sendingContinent = sendingContinent;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            transaction.sendingDetails.continent = sendingContinent;
+            await transaction.save();
         
             const countriesList = countries.continents[sendingContinent];
         
             const embed = new EmbedBuilder()
-                .setAuthor({
-                    name: `Continent - ${sendingContinent}`,
-                    iconURL: interfaceIcons.continentIcon,
-                })
-                .setDescription(`- Select a **country** in **${sendingContinent}** to proceed.\n- Please choose correctly.`)
+                .setAuthor({ name: `Continent - ${sendingContinent}`, iconURL: interfaceIcons.continentIcon })
+                .setDescription(`Select a **country** in **${sendingContinent}** to proceed.`)
                 .setColor(0x00AE86);
         
             const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId('select_sending_country')
                     .setPlaceholder('Choose your country')
-                    .addOptions(
-                        countriesList.map((country) => {
-                            const emoji = countries.emojiMappings[country] || '';
-                            return {
-                                label: `${emoji} ${country}`,
-                                value: country,
-                            };
-                        })
-                    )
+                    .addOptions(countriesList.map(country => ({
+                        label: `${countries.emojiMappings[country] || ''} ${country}`,
+                        value: country
+                    })))
             );
         
             await interaction.update({ embeds: [embed], components: [row] });
@@ -198,60 +218,49 @@ module.exports = async (client, interaction) => {
         
         if (customId === 'select_sending_country') {
             const sendingCountry = values[0];
-            const currency = countries.currencies[sendingCountry];
-            const serverDetails = tempData.get(user.id);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
-            // Create transaction with initial details
-            const transaction = new Transaction({
-                userId: user.id,
-                username: user.username,
-                serverId: serverDetails.serverId,
-                serverName: serverDetails.serverName,
-                ownerId: serverDetails.ownerId,
-                ownerName: serverDetails.ownerName,
-                country: sendingCountry,
-                currency: currency,
-                status: 'Pending',
-                type: serverDetails.flowType,
-                userType: serverDetails.isPremium ? 'Premium' : 'Free'
-            });
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            transaction.country = sendingCountry;
+            transaction.sendCurrency = countries.currencies[sendingCountry]; // Set sendCurrency
             await transaction.save();
         
-            const paymentMethods = countries.paymentMethods[sendingCountry];
+            const paymentMethods = countries.paymentMethods[sendingCountry]?.send || [];
         
             const embed = new EmbedBuilder()
-                .setAuthor({
-                    name: `Choose Sending Method - ${sendingCountry}`,
-                    iconURL: interfaceIcons.currencyIcon,
-                })
-                .setDescription(`You selected **${sendingCountry}** with currency **${currency}**.\n\nChoose a **sending method** to proceed.`)
+                .setAuthor({ name: `Choose Sending Method - ${sendingCountry}`, iconURL: interfaceIcons.currencyIcon })
+                .setDescription(
+                    `You selected **${sendingCountry}** with currency **${transaction.sendCurrency}**.\nChoose a sending method to proceed.`
+                )
                 .setColor(0x00AE86);
         
             const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId('select_currency_sending_method')
                     .setPlaceholder('Choose your sending method')
-                    .addOptions(
-                        paymentMethods.send.map((method) => ({
-                            label: method,
-                            value: method,
-                        }))
-                    )
+                    .addOptions(paymentMethods.map(method => ({ label: method, value: method })))
             );
         
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
+        
         if (customId === 'select_currency_sending_method') {
             const sendingMethod = values[0];
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
             transaction.sendMethod = sendingMethod;
             await transaction.save();
         
-            // Decide receiving type based on original transaction flow
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Select Receiving Type', iconURL: interfaceIcons.continentIcon })
+                .setAuthor({ name: 'Select Receiving Type', iconURL: interfaceIcons.currencyIcon })
                 .setDescription('Choose how you want to receive the transaction.')
                 .setColor(0x00AE86);
         
@@ -268,11 +277,23 @@ module.exports = async (client, interaction) => {
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
+        
         if (customId === 'select_receiving_type') {
             const receivingType = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.receivingType = receivingType;
-            tempData.set(user.id, serverDetails);
+        
+            // Fetch the transaction associated with the user
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                return interaction.update({
+                    content: 'Transaction not found. Please restart the process.',
+                    components: []
+                });
+            }
+        
+            // Save the receiving type to the transaction
+            transaction.receiveMethod = receivingType;
+            await transaction.save();
         
             if (receivingType === 'Currency') {
                 // Currency receiving flow
@@ -315,20 +336,23 @@ module.exports = async (client, interaction) => {
                 await interaction.update({ embeds: [embed], components: [row] });
             }
         }
+        
         if (customId === 'select_receiving_crypto') {
             const receivingCrypto = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.receivingCrypto = receivingCrypto;
-            tempData.set(user.id, serverDetails);
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
-            // Get the available receiving methods for the selected cryptocurrency
+            if (!transaction) {
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+            }
+        
+            // Save the receiving cryptocurrency type
+            transaction.receivingCryptoType = receivingCrypto;
+            await transaction.save();
+        
             const paymentMethods = cryptos.cryptos[receivingCrypto].receive;
         
             const embed = new EmbedBuilder()
-                .setAuthor({ 
-                    name: `Choose Receiving Method - ${receivingCrypto}`, 
-                    iconURL: interfaceIcons.paymentIcon 
-                })
+                .setAuthor({ name: `Choose Receiving Method - ${receivingCrypto}`, iconURL: interfaceIcons.paymentIcon })
                 .setDescription(`Select a **receiving method** for ${receivingCrypto}.`)
                 .setColor(0x00AE86);
         
@@ -336,51 +360,38 @@ module.exports = async (client, interaction) => {
                 new StringSelectMenuBuilder()
                     .setCustomId('select_crypto_receiving_method')
                     .setPlaceholder('Choose a receiving method')
-                    .addOptions(
-                        paymentMethods.map((method) => ({
-                            label: method,
-                            value: method,
-                        }))
-                    )
+                    .addOptions(paymentMethods.map(method => ({ label: method, value: method })))
             );
         
             await interaction.update({ embeds: [embed], components: [row] });
         }
+        
         
         if (customId === 'select_crypto_receiving_method') {
             const receiveMethod = values[0];
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
             if (!transaction) {
-                return interaction.update({
-                    content: 'Transaction not found. Please restart the process.',
-                    components: [],
-                });
+                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
             }
         
-            // Save the receiving cryptocurrency and method
-            transaction.cryptoType = tempData.get(user.id).receivingCrypto;
+            // Save the receiving method and network
             transaction.receiveMethod = receiveMethod;
-        
-            // Determine the network if applicable
-            const cryptoDetails = cryptos.cryptos[transaction.cryptoType];
-            transaction.receiveNetwork = cryptoDetails?.receiveDetails?.network_type || 'Not Set';
-        
+            transaction.receiveNetwork = receiveMethod.includes('TRC-20') ? 'TRC-20' :
+                                         receiveMethod.includes('ERC-20') ? 'ERC-20' :
+                                         'Unknown';
             await transaction.save();
         
             const embed = new EmbedBuilder()
-                .setAuthor({
-                    name: 'Transaction Summary',
-                    iconURL: interfaceIcons.transactionIcon,
-                })
+                .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
                 .setDescription(
                     `Your transaction details:\n\n` +
-                    `- **Sending Type:** ${transaction.country || transaction.cryptoType || 'Not Set'}\n` +
-                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n\n` +
-                    `- **Receiving Type:** ${transaction.receiveCountry || transaction.cryptoType || 'Not Set'}\n` +
+                    `- **Sending Crypto:** ${transaction.sendingCryptoType || 'Not Set'}\n` +
+                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n` +
+                    `- **Receiving Crypto:** ${transaction.receivingCryptoType || 'Not Set'}\n` +
                     `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
-                    `- **Receiving Network:** ${transaction.receiveNetwork || 'Not Set'}\n\n` +
-                    'Use the buttons below to enter additional details or finalize the transaction.'
+                    `- **Receiving Network:** ${transaction.receiveNetwork || 'Unknown'}\n\n` +
+                    'Finalize or modify your transaction.'
                 )
                 .setColor(0x00AE86);
         
@@ -402,18 +413,31 @@ module.exports = async (client, interaction) => {
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
-        if (customId === 'select_receiving_continent') { // Corrected customId
-            const receivingContinent = values[0];
-            const serverDetails = tempData.get(user.id);
-            serverDetails.receivingContinent = receivingContinent; // Save to tempData
-            tempData.set(user.id, serverDetails);
         
+        if (customId === 'select_receiving_continent') {
+            const receivingContinent = values[0];
+        
+            // Fetch the pending transaction for the user
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                return interaction.update({
+                    content: 'Transaction not found. Please restart the process.',
+                    components: []
+                });
+            }
+        
+            // Save the receiving continent to the transaction
+            transaction.receivingDetails.continent = receivingContinent;
+            await transaction.save();
+        
+            // Fetch the countries in the selected continent
             const countriesList = countries.continents[receivingContinent];
         
             if (!countriesList || countriesList.length === 0) {
                 return interaction.update({
                     content: `No countries available in **${receivingContinent}**. Please start again.`,
-                    components: [],
+                    components: []
                 });
             }
         
@@ -444,9 +468,9 @@ module.exports = async (client, interaction) => {
         }
         
         
+        
         if (customId === 'select_receiving_country') {
-            const receivingCountry = values[0]; // Extract selected receiving country
-            const currency = countries.currencies[receivingCountry];
+            const receivingCountry = values[0];
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
             if (!transaction) {
@@ -456,10 +480,9 @@ module.exports = async (client, interaction) => {
                 });
             }
         
-            // Save the receiving country and currency
             transaction.receiveCountry = receivingCountry;
-            transaction.currency = currency; // Update the currency for receiving
-            await transaction.save(); // Save changes to the database
+            transaction.receiveCurrency = countries.currencies[receivingCountry]; // Set receiveCurrency
+            await transaction.save();
         
             const paymentMethods = countries.paymentMethods[receivingCountry]?.receive || [];
             if (!paymentMethods.length) {
@@ -475,13 +498,13 @@ module.exports = async (client, interaction) => {
                     iconURL: interfaceIcons.currencyIcon,
                 })
                 .setDescription(
-                    `You selected **${receivingCountry}** with currency **${currency}**.\n\nChoose a **receiving method** to proceed.`
+                    `You selected **${receivingCountry}** with currency **${transaction.receiveCurrency}**.\n\nChoose a **receiving method** to proceed.`
                 )
                 .setColor(0x00AE86);
         
             const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
-                    .setCustomId('final_receive_method') // Ensure this matches the next handler
+                    .setCustomId('final_receive_method')
                     .setPlaceholder('Select a receiving method')
                     .addOptions(
                         paymentMethods.map((method) => ({
@@ -491,15 +514,14 @@ module.exports = async (client, interaction) => {
                     )
             );
         
-            // Ensure single response
             if (!interaction.replied) {
                 await interaction.update({ embeds: [embed], components: [row] });
             }
         }
         
         
+        
         if (customId === 'final_receive_method') {
-            console.log('Triggered customId:', customId); // Debugging log
             const receiveMethod = values[0];
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
@@ -524,10 +546,12 @@ module.exports = async (client, interaction) => {
                 })
                 .setDescription(
                     `Your transaction details:\n\n` +
-                    `- **Sending Country/Crypto:** ${transaction.country || transaction.cryptoType || 'Not Set'}\n` +
-                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n` +
+                    `- **Sending Country:** ${transaction.country || 'Not Set'}\n` +
+                    `- **Sending Currency:** ${transaction.sendCurrency || 'Not Set'}\n` +
+                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n\n` +
                     `- **Details:** ${sendMethodDetails}\n\n` +
                     `- **Receiving Country:** ${transaction.receiveCountry || 'Not Set'}\n` +
+                    `- **Receiving Currency:** ${transaction.receiveCurrency || 'Not Set'}\n` +
                     `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
                     `- **Details:** ${receiveMethodDetails}\n\n` +
                     'Use the buttons below to enter additional details or finalize the transaction.'
@@ -567,40 +591,67 @@ module.exports = async (client, interaction) => {
             await modmailHandler.startModmail(client, interaction);
         }
 
-       if (customId === 'enter_sending_details') {
+        if (customId === 'enter_sending_details') {
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
-
+        
             if (!transaction) {
+                console.log('DEBUG: No pending transaction found for user:', user.id);
                 return interaction.reply({
                     content: 'No pending transaction found. Please restart the process.',
                     ephemeral: true,
                 });
             }
-
-            // Determine the question source
-            const isCrypto = transaction.type === 'Crypto';
-            const dataset = isCrypto ? cryptos.cryptoModalQuestions : countries.modalQuestions;
-            const identifier = isCrypto ? transaction.cryptoType : transaction.country;
-
-            // Log details for debugging
-            console.log('Dataset:', dataset);
-            console.log('Identifier:', identifier);
-
-            // Get the relevant questions, ensuring fallback to default
+        
+            console.log('DEBUG: Found Transaction:', transaction);
+        
+            // Detect the flow
+            const isCryptoToCrypto = transaction.sendingCryptoType && transaction.receivingCryptoType;
+            const isCryptoToCurrency = transaction.sendingCryptoType && transaction.receiveCountry;
+            const isCurrencyToCrypto = transaction.currency && transaction.receivingCryptoType;
+            const isCurrencyToCurrency = transaction.currency && transaction.receiveCountry;
+        
+            let flowType = '';
+            if (isCryptoToCrypto) flowType = 'crypto_to_crypto';
+            else if (isCryptoToCurrency) flowType = 'crypto_to_currency';
+            else if (isCurrencyToCrypto) flowType = 'currency_to_crypto';
+            else if (isCurrencyToCurrency) flowType = 'currency_to_currency';
+        
+            console.log('DEBUG: Detected Flow:', flowType);
+        
+            // Select dataset based on the flow
+            const dataset =
+                flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency'
+                    ? cryptos.cryptoModalQuestions
+                    : countries.modalQuestions;
+        
+            console.log('DEBUG: Selected Dataset:', dataset);
+        
+            // Resolve the identifier
+            let identifier;
+            if (flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency') {
+                identifier = transaction.sendingCryptoType; // Use Crypto type
+            } else {
+                identifier = transaction.country; // Use Country for currency transactions
+            }
+        
+            console.log('DEBUG: Identifier for Sending Details:', identifier);
+        
+            // Fetch questions from the dataset
             const questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
-
+            console.log('DEBUG: Questions for Sending Details:', questions);
+        
             if (!questions.length) {
                 return interaction.reply({
                     content: 'No questions available for the selected sending method. Please contact support.',
                     ephemeral: true,
                 });
             }
-
-            // Build the modal
+        
+            // Build and show the modal
             const modal = new ModalBuilder()
                 .setCustomId('sending_details_modal')
-                .setTitle(`Enter ${isCrypto ? 'Crypto' : 'Currency'} Sending Details`);
-
+                .setTitle(`Enter Sending Details for ${identifier || 'Details'}`);
+        
             questions.forEach((question) => {
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(
@@ -612,68 +663,92 @@ module.exports = async (client, interaction) => {
                     )
                 );
             });
-
+        
             await interaction.showModal(modal);
         }
-
-
-       
         
-            if (customId === 'enter_receiving_details') {
-                const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
-
-                if (!transaction) {
-                    return interaction.reply({
-                        content: 'No pending transaction found. Please restart the process.',
-                        ephemeral: true,
-                    });
-                }
-
-                // Determine the question source
-                const isCrypto = transaction.receivingType === 'Crypto';
-                const dataset = isCrypto ? cryptos.cryptoModalQuestions : countries.modalQuestions;
-                const identifier = isCrypto ? transaction.cryptoType : transaction.receiveCountry;
-
-                // Log details for debugging
-                console.log('Dataset:', dataset);
-                console.log('Identifier:', identifier);
-
-                // Get the relevant questions, ensuring fallback to default
-                const questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
-
-                if (!questions.length) {
-                    return interaction.reply({
-                        content: 'No questions available for the selected receiving method. Please contact support.',
-                        ephemeral: true,
-                    });
-                }
-
-                // Build the modal
-                const modal = new ModalBuilder()
-                    .setCustomId('receiving_details_modal')
-                    .setTitle(`Enter ${isCrypto ? 'Crypto' : 'Currency'} Receiving Details`);
-
-                questions.forEach((question) => {
-                    modal.addComponents(
-                        new ActionRowBuilder().addComponents(
-                            new TextInputBuilder()
-                                .setCustomId(question.id)
-                                .setLabel(question.label)
-                                .setStyle(TextInputStyle.Short)
-                                .setRequired(question.required)
-                        )
-                    );
+        
+        if (customId === 'enter_receiving_details') {
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                console.log('DEBUG: No pending transaction found for user:', user.id);
+                return interaction.reply({
+                    content: 'No pending transaction found. Please restart the process.',
+                    ephemeral: true,
                 });
-
-                await interaction.showModal(modal);
             }
-
-      
+        
+            console.log('DEBUG: Found Transaction:', transaction);
+        
+            // Detect the flow
+            const isCryptoToCrypto = transaction.sendingCryptoType && transaction.receivingCryptoType;
+            const isCryptoToCurrency = transaction.sendingCryptoType && transaction.receiveCountry;
+            const isCurrencyToCrypto = transaction.currency && transaction.receivingCryptoType;
+            const isCurrencyToCurrency = transaction.currency && transaction.receiveCountry;
+        
+            let flowType = '';
+            if (isCryptoToCrypto) flowType = 'crypto_to_crypto';
+            else if (isCryptoToCurrency) flowType = 'crypto_to_currency';
+            else if (isCurrencyToCrypto) flowType = 'currency_to_crypto';
+            else if (isCurrencyToCurrency) flowType = 'currency_to_currency';
+        
+            console.log('DEBUG: Detected Flow:', flowType);
+        
+            // Select dataset based on the flow
+            const dataset =
+                flowType === 'crypto_to_crypto' ? cryptos.cryptoModalQuestions : countries.modalQuestions;
+        
+            console.log('DEBUG: Selected Dataset:', dataset);
+        
+            // Resolve the identifier
+            let identifier;
+            if (flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency') {
+                identifier = transaction.receivingCryptoType || transaction.receiveCountry;
+            } else {
+                identifier = transaction.receiveCountry;
+            }
+        
+            console.log('DEBUG: Identifier for Receiving Details:', identifier);
+        
+            // Fetch questions from the dataset
+            const questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
+            console.log('DEBUG: Questions for Receiving Details:', questions);
+        
+            if (!questions.length) {
+                return interaction.reply({
+                    content: 'No questions available for the selected receiving method. Please contact support.',
+                    ephemeral: true,
+                });
+            }
+        
+            // Build and show the modal
+            const modal = new ModalBuilder()
+                .setCustomId('receiving_details_modal')
+                .setTitle(`Enter Receiving Details for ${identifier || 'Details'}`);
+        
+            questions.forEach((question) => {
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId(question.id)
+                            .setLabel(question.label)
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(question.required)
+                    )
+                );
+            });
+        
+            await interaction.showModal(modal);
+        }
+        
+        
         
         if (customId === 'cancel_transaction') {
             await Transaction.deleteOne({ userId: user.id, status: 'Pending' });
             await interaction.reply({ content: 'Transaction canceled successfully.', ephemeral: true });
         }
+
         if (['mark_processing', 'mark_on_hold', 'mark_completed', 'mark_canceled', 'mark_as_read'].includes(customId)) {
             const adminChannel = interaction.channel;
         
@@ -702,37 +777,50 @@ module.exports = async (client, interaction) => {
                 case 'mark_completed':
                     newStatus = 'Completed';
                     userMessage = '<a:read:1312706994242584607> Your transaction has been **Completed**. Thank you!';
-
+                
+                    const specificChannelId = '1313135236724293675'; // Replace with your specific channel ID.
+                    const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
+                
+                    if (specificChannel) {
+                        // Determine the transaction flow
+                        let transactionFlow;
+                        if (transaction.sendingCryptoType && transaction.receiveCurrency) {
+                            transactionFlow = `${transaction.sendingCryptoType} (Crypto) → ${transaction.receiveCurrency} (Currency)`;
+                        } else if (transaction.sendCurrency && transaction.receiveCurrency) {
+                            transactionFlow = `${transaction.sendCurrency} (Currency) → ${transaction.receiveCurrency} (Currency)`;
+                        } else if (transaction.sendingCryptoType && transaction.receivingCryptoType) {
+                            transactionFlow = `${transaction.sendingCryptoType} (Crypto) → ${transaction.receivingCryptoType} (Crypto)`;
+                        } else if (transaction.sendCurrency && transaction.receivingCryptoType) {
+                            transactionFlow = `${transaction.sendCurrency} (Currency) → ${transaction.receivingCryptoType} (Crypto)`;
+                        } else {
+                            transactionFlow = 'Transaction flow data not available';
+                        }
+                
+                        const completedEmbed = new EmbedBuilder()
+                            .setAuthor({
+                                name: '🎉 Transaction Successful',
+                                iconURL: interfaceIcons.tickIcon,
+                            })
+                            .setDescription(`**Transaction has been completed.**\n\n**Details:**`)
+                            .addFields(
+                                { name: 'User', value: `<@${transaction.userId}>`, inline: true },
+                                { name: 'Transaction Flow', value: transactionFlow, inline: false }, // Add transaction flow
+                                ...(transaction.country ? [{ name: 'Initiating Country', value: transaction.country, inline: true }] : []),
+                                ...(transaction.sendMethod ? [{ name: 'Send Method', value: transaction.sendMethod, inline: true }] : []),
+                                ...(transaction.receiveCountry ? [{ name: 'Receiving Country', value: transaction.receiveCountry, inline: true }] : []),
+                                ...(transaction.receiveMethod ? [{ name: 'Receive Method', value: transaction.receiveMethod, inline: true }] : []),
+                                { name: 'User Type', value: transaction.userType === 'Premium' ? '🌟 Premium' : '🆓 Free', inline: true },
+                                { name: 'Handled By', value: `<@${interaction.user.id}>`, inline: true }
+                            )
+                            .setColor(0x00FF00)
+                            .setFooter({
+                                text: 'Safe, Secure & Fast! | Order Completed',
+                                iconURL: interfaceIcons.secureIcon,
+                            })
+                            .setTimestamp();
                     
-
-                    const specificChannelId = '1311777230669479946'; // Replace with your specific channel ID.
-    const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
-
-    if (specificChannel) {
-        const completedEmbed = new EmbedBuilder()
-            .setAuthor({
-                name: '🎉 Transaction Successful',
-                iconURL: interfaceIcons.tickIcon,
-            })
-            .setDescription(`**Transaction has been completed.**\n\n**Details:**`)
-            .addFields(
-                { name: 'User', value: `<@${transaction.userId}>`, inline: true },
-                { name: 'Initiating Country', value: transaction.country || 'N/A', inline: true },
-                { name: 'Currency', value: transaction.currency || 'N/A', inline: true },
-                { name: 'Receiving Country', value: transaction.receiveCountry || 'Not Set' , inline: true},
-                { name: 'User Type', value: transaction.userType === 'Premium' ? '🌟 Premium' : '🆓 Free', inline: true },
-                { name: 'Handled By', value: `<@${interaction.user.id}>`, inline: true },
-                { name: 'Send Method', value: transaction.sendMethod || 'N/A', inline: true },
-                { name: 'Receive Method', value: transaction.receiveMethod || 'N/A', inline: true },
-            )
-            .setColor(0x00FF00)
-            .setFooter({
-                text: 'Safe, Secure & Fast! | Order Completed',
-                iconURL: interfaceIcons.secureIcon,
-            })
-            .setTimestamp();
-
-                        await specificChannel.send({ embeds: [completedEmbed] });
+                            await specificChannel.send({ embeds: [completedEmbed] });
+                        
                     } else {
                         console.error(`Failed to fetch the specific channel: ${specificChannelId}`);
                     }
@@ -766,8 +854,19 @@ module.exports = async (client, interaction) => {
             }
         
             try {
+                // Fetch the user to notify
                 const userToNotify = await client.users.fetch(transaction.userId);
-        
+            
+                // Determine the embed color based on status
+                const embedColor =
+                    newStatus === 'Completed' ? 0x00FF00 :
+                    newStatus === 'Canceled' ? 0xFF0000 :
+                    newStatus === 'Processing' ? 0xFFFF00 : // Yellow for processing
+                    newStatus === 'On Hold' ? 0xFFA500 : // Orange for on-hold
+                    newStatus === 'Read' ? 0x0000FF : // Blue for read
+                    0x00AE86; // Default color
+            
+                // Construct the embed message
                 const userEmbed = new EmbedBuilder()
                     .setAuthor({
                         name: 'Transaction Update!',
@@ -775,29 +874,129 @@ module.exports = async (client, interaction) => {
                     })
                     .setDescription(userMessage)
                     .addFields(
-                        { name: 'Send Method', value: transaction.sendMethod || 'N/A', inline: true },
-                        { name: 'Receive Method', value: transaction.receiveMethod || 'N/A', inline: true },
-                        { name: 'Country', value: transaction.country, inline: true },
-                        { name: 'Currency', value: transaction.currency, inline: true }
+                        ...(transaction.sendMethod ? [{ name: 'Send Method', value: transaction.sendMethod, inline: true }] : []),
+                        ...(transaction.receiveMethod ? [{ name: 'Receive Method', value: transaction.receiveMethod, inline: true }] : []),
+                        ...(transaction.country ? [{ name: 'Initiating Country', value: transaction.country, inline: true }] : []),
+                        ...(transaction.receiveCountry ? [{ name: 'Receiving Country', value: transaction.receiveCountry, inline: true }] : []),
+                        ...(transaction.sendCurrency ? [{ name: 'Send Currency', value: transaction.sendCurrency, inline: true }] : []),
+                        ...(transaction.receiveCurrency ? [{ name: 'Receive Currency', value: transaction.receiveCurrency, inline: true }] : [])
                     )
                     .setFooter({
                         text: 'Safe, Secure & Fast!',
                         iconURL: interfaceIcons.secureIcon,
                     })
-                    .setColor(
-                        newStatus === 'Completed' ? 0x00FF00 :
-                        newStatus === 'Canceled' ? 0xFF0000 :
-                        newStatus === 'Read' ? 0x0000FF :
-                        0x00AE86
-                    );
-        
-                await userToNotify.send({ embeds: [userEmbed] });
+                    .setColor(embedColor)
+                    .setTimestamp();
+
+            
+                const row = new ActionRowBuilder().addComponents(
+                                [1, 2, 3, 4, 5].map((rating) =>
+                                    new ButtonBuilder()
+                                        .setCustomId(`rate_${rating}_${transaction._id}`) // Custom ID for identifying the rating
+                                        .setLabel(`${rating} ⭐`)
+                                        .setStyle(ButtonStyle.Secondary)
+                                )
+                            );
+                    
+                await user.send({ embeds: [userEmbed], components: [row] });
+            
             } catch (error) {
                 console.error(`Failed to send DM to user: ${transaction.userId}`, error);
             }
+            
         
             await interaction.reply({ content: `Transaction status updated to **${newStatus}** and the user has been notified.`, ephemeral: true });
         }
+        const [action, rating, transactionId] = interaction.customId.split('_');
+        if (action !== 'rate') return;
+    
+        // Disable buttons after submission
+        const row = new ActionRowBuilder().addComponents(
+            interaction.message.components[0].components.map((button) =>
+                ButtonBuilder.from(button).setDisabled(true)
+            )
+        );
+    
+        // Acknowledge the interaction and disable buttons
+        await interaction.update({ components: [row] });
+    
+        // Save the rating to the database
+        const transaction = await Transaction.findById(transactionId);
+        if (!transaction) return;
+    
+        const transactionFlow =
+            transaction.sendingCryptoType && transaction.receiveCurrency
+                ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receiveCurrency} (Currency)`
+                : transaction.sendCurrency && transaction.receiveCurrency
+                ? `${transaction.sendCurrency} (Currency) → ${transaction.receiveCurrency} (Currency)`
+                : transaction.sendingCryptoType && transaction.receivingCryptoType
+                ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receivingCryptoType} (Crypto)`
+                : transaction.sendCurrency && transaction.receivingCryptoType
+                ? `${transaction.sendCurrency} (Currency) → ${transaction.receivingCryptoType} (Crypto)`
+                : 'Transaction flow data not available';
+    
+        const newRating = new Rating({
+            transactionId: transaction._id,
+            userId: transaction.userId,
+            username: transaction.username,
+            userType: transaction.userType,
+            transactionFlow: transactionFlow,
+            rating: parseInt(rating, 10),
+        });
+    
+        await newRating.save();
+    
+        // Notify the user about the rating submission
+        await interaction.followUp({
+            content: `Thank you for rating this transaction with ${rating} ⭐!`,
+            ephemeral: true,
+        });
+    
+        // Send the rating details to a specific guild and channel
+        const guildId = RATING_GUILD_ID; // Replace with your guild ID
+        const channelId = RATING_CHANNEL_ID; // Replace with your channel ID
+    
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) {
+            console.error(`Guild with ID ${guildId} not found.`);
+            return;
+        }
+    
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel || channel.type !== ChannelType.GuildText) {
+            console.error(`Channel with ID ${channelId} not found or is not a text channel.`);
+            return;
+        }
+    
+        const starRating = '⭐'.repeat(rating); // Generate stars dynamically based on the rating
+
+        const ratingEmbed = new EmbedBuilder()
+            .setAuthor({
+                name: 'New Transaction Rating Submitted',
+                iconURL: interfaceIcons.ratingIcon,
+            })
+            .setDescription(
+                `- A user has rated their transaction! Here's a summary:\n\n` +
+                `**User:** <@${transaction.userId}>\n` +
+                `**User Type:** ${transaction.userType === 'Premium' ? '🌟 Premium' : '🆓 Free'}\n` +
+                `**Transaction Flow:** ${transactionFlow}\n\n` +
+                `**Rating:** ${starRating}`
+            )
+            .setColor(0x00AE86)
+            .setFooter({
+                text: 'Thank you for using our service!',
+                iconURL: interfaceIcons.heartIcon,
+            })
+            .setTimestamp();
+        
+        try {
+            // Send the embed to the specified channel
+            await channel.send({ embeds: [ratingEmbed] });
+        } catch (error) {
+            console.error(`Failed to send rating details to channel: ${channelId}`, error);
+        }
+        
+
         if (customId === 'finish_transaction') {
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
 
@@ -900,60 +1099,75 @@ module.exports = async (client, interaction) => {
             await transaction.save();
         
             // Build the transaction summary embed
-            const adminEmbed = new EmbedBuilder()
-            .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
-            .setColor(0x00AE86)
-            .setDescription('Here are the details of your transaction:')
-            .setTimestamp();
-
-        // Include user and server information
-        adminEmbed.addFields(
-            { name: 'User ID', value: transaction.userId || 'Not Set', inline: true },
-            { name: 'Username', value: transaction.username || 'Not Set', inline: true },
-            { name: 'Server ID', value: transaction.serverId || 'Not Set', inline: true },
-            { name: 'Server Name', value: transaction.serverName || 'Not Set', inline: true },
-            { name: 'Owner ID', value: transaction.ownerId || 'Not Set', inline: true },
-            { name: 'Owner Name', value: transaction.ownerName || 'Not Set', inline: true }
-        );
-
-        // Include transaction overview
-        adminEmbed.addFields(
-            { name: 'Transaction Type', value: transaction.type || 'Not Set', inline: true },
-            { name: 'User Type', value: transaction.userType || 'Not Set', inline: true },
-            { name: 'Currency', value: transaction.currency || 'Not Set', inline: true },
-            { name: 'Crypto Type', value: transaction.cryptoType || 'Not Set', inline: true },
-            { name: 'Send Network', value: transaction.sendNetwork || 'Not Set', inline: true },
-            { name: 'Receive Network', value: transaction.receiveNetwork || 'Not Set', inline: true },
-            { name: 'Status', value: transaction.status || 'Not Set', inline: true }
-        );
-
-        // Add sending details
-        const validSendingDetails = Object.entries(transaction.sendingDetails || {}).filter(
-            ([key, value]) => key && value
-        );
-        adminEmbed.addFields(
-            { name: 'Sending Details', value: '---', inline: false },
-            ...validSendingDetails.map(([key, value]) => ({
-                name: `Sending: ${key}`,
-                value: value || 'N/A',
-                inline: true,
-            }))
-        );
-
-        // Add receiving details
-        const validReceivingDetails = Object.entries(transaction.receivingDetails || {}).filter(
-            ([key, value]) => key && value
-        );
-        adminEmbed.addFields(
-            { name: 'Receiving Details', value: '---', inline: false },
-            ...validReceivingDetails.map(([key, value]) => ({
-                name: `Receiving: ${key}`,
-                value: value || 'N/A',
-                inline: true,
-            }))
-        )
-            .setColor(0x00AE86);
-        
+                    // Build the transaction summary embed
+                    const adminEmbed = new EmbedBuilder()
+                    .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
+                    .setColor(0x00AE86)
+                    .setDescription('Here are the details of your transaction:')
+                    .setTimestamp();
+                
+                // Include user and server information if available
+                const userFields = [
+                    { name: 'User ID', value: transaction.userId, inline: true },
+                    { name: 'Username', value: transaction.username, inline: true },
+                    { name: 'Server ID', value: transaction.serverId, inline: true },
+                    { name: 'Server Name', value: transaction.serverName, inline: true },
+                    { name: 'Owner ID', value: transaction.ownerId, inline: true },
+                    { name: 'Owner Name', value: transaction.ownerName, inline: true },
+                ].filter(field => field.value); // Include only fields with valid data
+                
+                adminEmbed.addFields(...userFields);
+                
+                // Include transaction overview
+                const transactionOverview = [
+                    { name: 'Transaction Type', value: transaction.type, inline: true },
+                    { name: 'User Type', value: transaction.userType, inline: true },
+                    { name: 'Status', value: transaction.status, inline: true },
+                    // Dynamically add send and receive country with currency when available
+                    ...(transaction.country && transaction.sendCurrency ? [
+                        { name: 'Send Country', value: `${transaction.country} (${transaction.sendCurrency})`, inline: true }
+                    ] : []),
+                    ...(transaction.receiveCountry && transaction.receiveCurrency ? [
+                        { name: 'Receive Country', value: `${transaction.receiveCountry} (${transaction.receiveCurrency})`, inline: true }
+                    ] : []),
+                    { name: 'Sending Crypto', value: transaction.sendingCryptoType, inline: true },
+                    { name: 'Receiving Crypto', value: transaction.receivingCryptoType, inline: true },
+                    { name: 'Send Network', value: transaction.sendNetwork, inline: true },
+                    { name: 'Receive Network', value: transaction.receiveNetwork, inline: true },
+                ].filter(field => field.value); // Include only fields with valid data
+                
+                adminEmbed.addFields(...transactionOverview);
+                
+                // Add sending details
+                const validSendingDetails = Object.entries(transaction.sendingDetails || {}).filter(
+                    ([key, value]) => key && value
+                );
+                if (validSendingDetails.length > 0) {
+                    adminEmbed.addFields(
+                        { name: 'Sending Details', value: '---', inline: false },
+                        ...validSendingDetails.map(([key, value]) => ({
+                            name: `Sending: ${key}`,
+                            value: value,
+                            inline: true,
+                        }))
+                    );
+                }
+                
+                // Add receiving details
+                const validReceivingDetails = Object.entries(transaction.receivingDetails || {}).filter(
+                    ([key, value]) => key && value
+                );
+                if (validReceivingDetails.length > 0) {
+                    adminEmbed.addFields(
+                        { name: 'Receiving Details', value: '---', inline: false },
+                        ...validReceivingDetails.map(([key, value]) => ({
+                            name: `Receiving: ${key}`,
+                            value: value,
+                            inline: true,
+                        }))
+                    );
+                }
+                
             // Action row with transaction controls for admins
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -1000,81 +1214,64 @@ module.exports = async (client, interaction) => {
     
     if (interaction.isModalSubmit()) {
         const { customId, user } = interaction;
-    if (customId === 'sending_details_modal') {
-        const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
 
-        if (!transaction) {
+
+        if (customId === 'sending_details_modal') {
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                console.log('DEBUG: No pending transaction found for user:', user.id);
+                return interaction.reply({
+                    content: 'No pending transaction found. Please restart the process.',
+                    ephemeral: true,
+                });
+            }
+        
+            const sendingDetails = {};
+            interaction.fields.fields.forEach((field) => {
+                sendingDetails[field.customId] = field.value;
+            });
+        
+            transaction.sendingDetails = sendingDetails;
+            await transaction.save();
+        
+            console.log('DEBUG: Updated Transaction with Sending Details:', transaction);
+        
             return interaction.reply({
-                content: 'No pending transaction found. Please restart the process.',
+                content: 'Sending details saved successfully!',
                 ephemeral: true,
             });
         }
-
-        // Collect responses
-        const sendingDetails = {};
-        interaction.fields.fields.forEach((field) => {
-            sendingDetails[field.customId] = field.value;
-        });
-
-        // Save to transaction
-        transaction.sendingDetails = sendingDetails;
-        await transaction.save();
-
-        console.log('Sending Details Saved:', transaction);
-
-        return interaction.reply({
-            content: 'Sending details saved successfully!',
-            ephemeral: true,
-        });
-    }
-    if (customId === 'receiving_details_modal') {
-        const transaction = await Transaction.findOne({ userId: interaction.user.id, status: 'Pending' });
-    
-        if (!transaction) {
+        
+        // Handle Saving Receiving Details
+        if (customId === 'receiving_details_modal') {
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+        
+            if (!transaction) {
+                console.log('DEBUG: No pending transaction found for user:', user.id);
+                return interaction.reply({
+                    content: 'No pending transaction found. Please restart the process.',
+                    ephemeral: true,
+                });
+            }
+        
+            const receivingDetails = {};
+            interaction.fields.fields.forEach((field) => {
+                receivingDetails[field.customId] = field.value;
+            });
+        
+            transaction.receivingDetails = receivingDetails;
+            await transaction.save();
+        
+            console.log('DEBUG: Updated Transaction with Receiving Details:', transaction);
+        
             return interaction.reply({
-                content: 'No pending transaction found. Please restart the process.',
+                content: 'Receiving details saved successfully!',
                 ephemeral: true,
             });
         }
-    
-        // Debug receiving type
-        console.log('Transaction Receiving Type:', transaction.receivingType);
-    
-        // Ensure receivingType and related fields are correctly set
-        const isCrypto = transaction.receivingType === 'Crypto';
-        const dataset = isCrypto ? cryptos.cryptoModalQuestions : countries.modalQuestions;
-        const identifier = isCrypto ? transaction.cryptoType : transaction.receiveCountry || 'default';
-    
-        // Debug identifiers
-        console.log('Dataset:', dataset);
-        console.log('Identifier:', identifier);
-    
-        if (!identifier) {
-            return interaction.reply({
-                content: 'Unable to determine receiving identifier. Please restart the process.',
-                ephemeral: true,
-            });
-        }
-    
-        // Collect responses
-        const receivingDetails = {};
-        interaction.fields.fields.forEach((field) => {
-            receivingDetails[field.customId] = field.value;
-        });
-    
-        // Save receiving details to the transaction
-        transaction.receivingDetails = receivingDetails;
-        await transaction.save();
-    
-        console.log('Receiving Details Saved:', transaction);
-    
-        return interaction.reply({
-            content: 'Receiving details saved successfully!',
-            ephemeral: true,
-        });
-    }
-    
     
     }
     
 };
+
