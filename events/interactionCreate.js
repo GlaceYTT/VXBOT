@@ -17,9 +17,9 @@ const tempData = require('../data/tempData');
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
 
-const TARGET_SERVER_ID = '1311747616429576313';
-const RATING_GUILD_ID = '';
-const RATING_CHANNEL_ID = '';
+const TARGET_SERVER_ID = '1312775999934562374';
+const RATING_GUILD_ID = '1311305017499848827';
+const RATING_CHANNEL_ID = '1315226548596637756';
 module.exports = async (client, interaction) => {
     if (interaction.isCommand()) {
         const command = client.commands.get(interaction.commandName);
@@ -778,7 +778,7 @@ module.exports = async (client, interaction) => {
                     newStatus = 'Completed';
                     userMessage = '<a:read:1312706994242584607> Your transaction has been **Completed**. Thank you!';
                 
-                    const specificChannelId = '1313135236724293675'; // Replace with your specific channel ID.
+                    const specificChannelId = '1311777230669479946'; // Replace with your specific channel ID.
                     const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
                 
                     if (specificChannel) {
