@@ -814,12 +814,6 @@ module.exports = async (client, interaction) => {
                 category = await guild.channels.create({
                     name: categoryName,
                     type: ChannelType.GuildCategory,
-                   permissionOverwrites: [
-                        {
-                            id: guild.roles.everyone.id,
-                            deny: ['ViewChannel'], // Default deny for everyone
-                        },
-                    ],
                 });
             }
         
@@ -828,17 +822,7 @@ module.exports = async (client, interaction) => {
                 name: `transaction-${transaction._id}`,
                 type: ChannelType.GuildText,
                 topic: `Transaction ID: ${transaction._id}`,
-                parent: category.id, // Place inside the category
-                permissionOverwrites: [
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel'], // Hide the channel from everyone
-                    },
-                    {
-                        id: guild.ownerId,
-                        allow: ['ViewChannel', 'SendMessages', 'ManageMessages'], // Allow the guild owner
-                    },
-                ],
+                parent: category.id,
             });
         
             // Save the adminChannel ID in the transaction
