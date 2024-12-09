@@ -814,22 +814,12 @@ module.exports = async (client, interaction) => {
                 category = await guild.channels.create({
                     name: categoryName,
                     type: ChannelType.GuildCategory,
-                  permissionOverwrites: [
-    {
-        id: guild.roles.everyone.id, // The @everyone role ID
-        deny: ['ViewChannel'], // Deny access to everyone
-    },
-    {
-        id: guild.ownerId, // The guild owner's user ID
-        allow: ['ViewChannel', 'SendMessages', 'ManageMessages'], // Allow the owner
-    },
-    {
-        id: '123456789012345678', // Your custom role ID
-        allow: ['ViewChannel', 'SendMessages'], // Permissions for this role
-    },
-],
-
-
+                   permissionOverwrites: [
+                        {
+                            id: guild.roles.everyone.id,
+                            deny: ['ViewChannel'], // Default deny for everyone
+                        },
+                    ],
                 });
             }
         
