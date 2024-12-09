@@ -744,9 +744,216 @@ module.exports = async (client, interaction) => {
         
         
         
-        if (customId === 'cancel_transaction') {
-            await Transaction.deleteOne({ userId: user.id, status: 'Pending' });
-            await interaction.reply({ content: 'Transaction canceled successfully.', ephemeral: true });
+          if (customId === 'finish_transaction') {
+            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+
+            if (!transaction) {
+                return interaction.reply({
+                    content: 'No pending transaction found. Please restart the process.',
+                    ephemeral: true,
+                });
+            }
+        
+            // Validate that both sendingDetails and receivingDetails are filled
+            if (!transaction.sendingDetails || Object.keys(transaction.sendingDetails).length === 0) {
+                return interaction.reply({
+                    content: 'Please enter the Sending Details before finalizing the transaction.',
+                    ephemeral: true,
+                });
+            }
+        
+            if (!transaction.receivingDetails || Object.keys(transaction.receivingDetails).length === 0) {
+                return interaction.reply({
+                    content: 'Please enter the Receiving Details before finalizing the transaction.',
+                    ephemeral: true,
+                });
+            }
+        
+            // Mark the transaction as "Processing"
+            transaction.status = 'Processing';
+            await transaction.save();
+        
+            // Disable all buttons
+            const disabledRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('enter_sending_details')
+                    .setLabel('Enter Sending Details')
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(true), // Disabled
+                new ButtonBuilder()
+                    .setCustomId('enter_receiving_details')
+                    .setLabel('Enter Receiving Details')
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(true), // Disabled
+                new ButtonBuilder()
+                    .setCustomId('finish_transaction')
+                    .setLabel('Finish Transaction')
+                    .setStyle(ButtonStyle.Success)
+                    .setDisabled(true) // Disabled
+            );
+        
+            // Notify the user
+            await interaction.update({
+                content: 'Your transaction is now being processed.',
+                components: [disabledRow],
+            });
+        
+            // Fetch the guild using guildId
+            const guild = await client.guilds.fetch('1312775999934562374');
+        
+            // Create a channel for this transaction
+            const categoryName = transaction.userType === 'Free' ? 'Free' : 'Premium';
+        
+            // Check if the category exists
+            let category = guild.channels.cache.find(
+                (channel) => channel.type === ChannelType.GuildCategory && channel.name === categoryName
+            );
+        
+            // If the category doesn't exist, create it
+            if (!category) {
+                category = await guild.channels.create({
+                    name: categoryName,
+                    type: ChannelType.GuildCategory,
+                    permissionOverwrites: [
+                        {
+                            id: guild.roles.everyone.id,
+                            deny: ['ViewChannel'], // Default deny for everyone
+                        },
+                    ],
+                });
+            }
+        
+            // Create the transaction channel inside the appropriate category
+            const adminChannel = await guild.channels.create({
+                name: `transaction-${transaction._id}`,
+                type: ChannelType.GuildText,
+                topic: `Transaction ID: ${transaction._id}`,
+                parent: category.id, // Place inside the category
+                permissionOverwrites: [
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel'], // Hide the channel from everyone
+                    },
+                    {
+                        id: guild.ownerId,
+                        allow: ['ViewChannel', 'SendMessages', 'ManageMessages'], // Allow the guild owner
+                    },
+                ],
+            });
+        
+            // Save the adminChannel ID in the transaction
+            transaction.adminChannelId = adminChannel.id;
+            await transaction.save();
+        
+            // Build the transaction summary embed
+                    // Build the transaction summary embed
+                    const adminEmbed = new EmbedBuilder()
+                    .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
+                    .setColor(0x00AE86)
+                    .setDescription('Here are the details of your transaction:')
+                    .setTimestamp();
+                
+                // Include user and server information if available
+                const userFields = [
+                    { name: 'User ID', value: transaction.userId, inline: true },
+                    { name: 'Username', value: transaction.username, inline: true },
+                    { name: 'Server ID', value: transaction.serverId, inline: true },
+                    { name: 'Server Name', value: transaction.serverName, inline: true },
+                    { name: 'Owner ID', value: transaction.ownerId, inline: true },
+                    { name: 'Owner Name', value: transaction.ownerName, inline: true },
+                ].filter(field => field.value); // Include only fields with valid data
+                
+                adminEmbed.addFields(...userFields);
+                
+                // Include transaction overview
+                const transactionOverview = [
+                    { name: 'Transaction Type', value: transaction.type, inline: true },
+                    { name: 'User Type', value: transaction.userType, inline: true },
+                    { name: 'Status', value: transaction.status, inline: true },
+                    // Dynamically add send and receive country with currency when available
+                    ...(transaction.country && transaction.sendCurrency ? [
+                        { name: 'Send Country', value: `${transaction.country} (${transaction.sendCurrency})`, inline: true }
+                    ] : []),
+                    ...(transaction.receiveCountry && transaction.receiveCurrency ? [
+                        { name: 'Receive Country', value: `${transaction.receiveCountry} (${transaction.receiveCurrency})`, inline: true }
+                    ] : []),
+                    { name: 'Sending Crypto', value: transaction.sendingCryptoType, inline: true },
+                    { name: 'Receiving Crypto', value: transaction.receivingCryptoType, inline: true },
+                    { name: 'Send Network', value: transaction.sendNetwork, inline: true },
+                    { name: 'Receive Network', value: transaction.receiveNetwork, inline: true },
+                ].filter(field => field.value); // Include only fields with valid data
+                
+                adminEmbed.addFields(...transactionOverview);
+                
+                // Add sending details
+                const validSendingDetails = Object.entries(transaction.sendingDetails || {}).filter(
+                    ([key, value]) => key && value
+                );
+                if (validSendingDetails.length > 0) {
+                    adminEmbed.addFields(
+                        { name: 'Sending Details', value: '---', inline: false },
+                        ...validSendingDetails.map(([key, value]) => ({
+                            name: `Sending: ${key}`,
+                            value: value,
+                            inline: true,
+                        }))
+                    );
+                }
+                
+                // Add receiving details
+                const validReceivingDetails = Object.entries(transaction.receivingDetails || {}).filter(
+                    ([key, value]) => key && value
+                );
+                if (validReceivingDetails.length > 0) {
+                    adminEmbed.addFields(
+                        { name: 'Receiving Details', value: '---', inline: false },
+                        ...validReceivingDetails.map(([key, value]) => ({
+                            name: `Receiving: ${key}`,
+                            value: value,
+                            inline: true,
+                        }))
+                    );
+                }
+                
+            // Action row with transaction controls for admins
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                .setCustomId('mark_as_read')
+                .setLabel('Mark as Read')
+                .setEmoji('1312742596166029332')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('mark_processing')
+                .setLabel('Processing')
+                .setEmoji('1312705388134531072')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('mark_on_hold')
+                .setLabel('On Hold')
+                .setEmoji('1312706100620951632')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('mark_completed')
+                .setLabel('Completed')
+                .setEmoji('1312706994242584607')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('mark_canceled')
+                .setLabel('Cancel')
+                .setEmoji('1312743491327098941')
+                .setStyle(ButtonStyle.Danger)
+            );
+        
+            // Send the transaction details to the admin channel
+            await adminChannel.send({ embeds: [adminEmbed], components: [row] });
+        
+            // Inform the user that the transaction is successfully submitted
+            // const userEmbed = new EmbedBuilder()
+            //     .setTitle('Transaction Submitted')
+            //     .setDescription('Your transaction details have been submitted and are now processing.')
+            //     .setColor(0x00AE86);
+        
+            // await interaction.reply({ embeds: [userEmbed], ephemeral: true });
         }
 
         if (['mark_processing', 'mark_on_hold', 'mark_completed', 'mark_canceled', 'mark_as_read'].includes(customId)) {
@@ -997,217 +1204,7 @@ module.exports = async (client, interaction) => {
         }
         
 
-        if (customId === 'finish_transaction') {
-            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
-
-            if (!transaction) {
-                return interaction.reply({
-                    content: 'No pending transaction found. Please restart the process.',
-                    ephemeral: true,
-                });
-            }
-        
-            // Validate that both sendingDetails and receivingDetails are filled
-            if (!transaction.sendingDetails || Object.keys(transaction.sendingDetails).length === 0) {
-                return interaction.reply({
-                    content: 'Please enter the Sending Details before finalizing the transaction.',
-                    ephemeral: true,
-                });
-            }
-        
-            if (!transaction.receivingDetails || Object.keys(transaction.receivingDetails).length === 0) {
-                return interaction.reply({
-                    content: 'Please enter the Receiving Details before finalizing the transaction.',
-                    ephemeral: true,
-                });
-            }
-        
-            // Mark the transaction as "Processing"
-            transaction.status = 'Processing';
-            await transaction.save();
-        
-            // Disable all buttons
-            const disabledRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('enter_sending_details')
-                    .setLabel('Enter Sending Details')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(true), // Disabled
-                new ButtonBuilder()
-                    .setCustomId('enter_receiving_details')
-                    .setLabel('Enter Receiving Details')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(true), // Disabled
-                new ButtonBuilder()
-                    .setCustomId('finish_transaction')
-                    .setLabel('Finish Transaction')
-                    .setStyle(ButtonStyle.Success)
-                    .setDisabled(true) // Disabled
-            );
-        
-            // Notify the user
-            await interaction.update({
-                content: 'Your transaction is now being processed.',
-                components: [disabledRow],
-            });
-        
-            // Fetch the guild using guildId
-            const guild = await client.guilds.fetch('1312775999934562374');
-        
-            // Create a channel for this transaction
-            const categoryName = transaction.userType === 'Free' ? 'Free' : 'Premium';
-        
-            // Check if the category exists
-            let category = guild.channels.cache.find(
-                (channel) => channel.type === ChannelType.GuildCategory && channel.name === categoryName
-            );
-        
-            // If the category doesn't exist, create it
-            if (!category) {
-                category = await guild.channels.create({
-                    name: categoryName,
-                    type: ChannelType.GuildCategory,
-                    permissionOverwrites: [
-                        {
-                            id: guild.roles.everyone.id,
-                            deny: ['ViewChannel'], // Default deny for everyone
-                        },
-                    ],
-                });
-            }
-        
-            // Create the transaction channel inside the appropriate category
-            const adminChannel = await guild.channels.create({
-                name: `transaction-${transaction._id}`,
-                type: ChannelType.GuildText,
-                topic: `Transaction ID: ${transaction._id}`,
-                parent: category.id, // Place inside the category
-                permissionOverwrites: [
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel'], // Hide the channel from everyone
-                    },
-                    {
-                        id: guild.ownerId,
-                        allow: ['ViewChannel', 'SendMessages', 'ManageMessages'], // Allow the guild owner
-                    },
-                ],
-            });
-        
-            // Save the adminChannel ID in the transaction
-            transaction.adminChannelId = adminChannel.id;
-            await transaction.save();
-        
-            // Build the transaction summary embed
-                    // Build the transaction summary embed
-                    const adminEmbed = new EmbedBuilder()
-                    .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
-                    .setColor(0x00AE86)
-                    .setDescription('Here are the details of your transaction:')
-                    .setTimestamp();
-                
-                // Include user and server information if available
-                const userFields = [
-                    { name: 'User ID', value: transaction.userId, inline: true },
-                    { name: 'Username', value: transaction.username, inline: true },
-                    { name: 'Server ID', value: transaction.serverId, inline: true },
-                    { name: 'Server Name', value: transaction.serverName, inline: true },
-                    { name: 'Owner ID', value: transaction.ownerId, inline: true },
-                    { name: 'Owner Name', value: transaction.ownerName, inline: true },
-                ].filter(field => field.value); // Include only fields with valid data
-                
-                adminEmbed.addFields(...userFields);
-                
-                // Include transaction overview
-                const transactionOverview = [
-                    { name: 'Transaction Type', value: transaction.type, inline: true },
-                    { name: 'User Type', value: transaction.userType, inline: true },
-                    { name: 'Status', value: transaction.status, inline: true },
-                    // Dynamically add send and receive country with currency when available
-                    ...(transaction.country && transaction.sendCurrency ? [
-                        { name: 'Send Country', value: `${transaction.country} (${transaction.sendCurrency})`, inline: true }
-                    ] : []),
-                    ...(transaction.receiveCountry && transaction.receiveCurrency ? [
-                        { name: 'Receive Country', value: `${transaction.receiveCountry} (${transaction.receiveCurrency})`, inline: true }
-                    ] : []),
-                    { name: 'Sending Crypto', value: transaction.sendingCryptoType, inline: true },
-                    { name: 'Receiving Crypto', value: transaction.receivingCryptoType, inline: true },
-                    { name: 'Send Network', value: transaction.sendNetwork, inline: true },
-                    { name: 'Receive Network', value: transaction.receiveNetwork, inline: true },
-                ].filter(field => field.value); // Include only fields with valid data
-                
-                adminEmbed.addFields(...transactionOverview);
-                
-                // Add sending details
-                const validSendingDetails = Object.entries(transaction.sendingDetails || {}).filter(
-                    ([key, value]) => key && value
-                );
-                if (validSendingDetails.length > 0) {
-                    adminEmbed.addFields(
-                        { name: 'Sending Details', value: '---', inline: false },
-                        ...validSendingDetails.map(([key, value]) => ({
-                            name: `Sending: ${key}`,
-                            value: value,
-                            inline: true,
-                        }))
-                    );
-                }
-                
-                // Add receiving details
-                const validReceivingDetails = Object.entries(transaction.receivingDetails || {}).filter(
-                    ([key, value]) => key && value
-                );
-                if (validReceivingDetails.length > 0) {
-                    adminEmbed.addFields(
-                        { name: 'Receiving Details', value: '---', inline: false },
-                        ...validReceivingDetails.map(([key, value]) => ({
-                            name: `Receiving: ${key}`,
-                            value: value,
-                            inline: true,
-                        }))
-                    );
-                }
-                
-            // Action row with transaction controls for admins
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                .setCustomId('mark_as_read')
-                .setLabel('Mark as Read')
-                .setEmoji('1312742596166029332')
-                .setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder()
-                .setCustomId('mark_processing')
-                .setLabel('Processing')
-                .setEmoji('1312705388134531072')
-                .setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder()
-                .setCustomId('mark_on_hold')
-                .setLabel('On Hold')
-                .setEmoji('1312706100620951632')
-                .setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder()
-                .setCustomId('mark_completed')
-                .setLabel('Completed')
-                .setEmoji('1312706994242584607')
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId('mark_canceled')
-                .setLabel('Cancel')
-                .setEmoji('1312743491327098941')
-                .setStyle(ButtonStyle.Danger)
-            );
-        
-            // Send the transaction details to the admin channel
-            await adminChannel.send({ embeds: [adminEmbed], components: [row] });
-        
-            // Inform the user that the transaction is successfully submitted
-            // const userEmbed = new EmbedBuilder()
-            //     .setTitle('Transaction Submitted')
-            //     .setDescription('Your transaction details have been submitted and are now processing.')
-            //     .setColor(0x00AE86);
-        
-            // await interaction.reply({ embeds: [userEmbed], ephemeral: true });
-        }
+      
         
     }
    
