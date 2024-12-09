@@ -1052,7 +1052,7 @@ module.exports = async (client, interaction) => {
             });
         
             // Fetch the guild using guildId
-            const guild = await client.guilds.fetch(TARGET_SERVER_ID);
+            const guild = await client.guilds.fetch('1312775999934562374');
         
             // Create a channel for this transaction
             const categoryName = transaction.userType === 'Free' ? 'Free' : 'Premium';
