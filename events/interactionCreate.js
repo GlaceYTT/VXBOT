@@ -17,7 +17,7 @@ const tempData = require('../data/tempData');
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
 
-const TARGET_SERVER_ID = '1312775999934562374';
+const ADMIN_TARGET_SERVER_ID = '1312775999934562374';
 const RATING_GUILD_ID = '1311305017499848827';
 const RATING_CHANNEL_ID = '1315226548596637756';
 module.exports = async (client, interaction) => {
@@ -799,7 +799,7 @@ module.exports = async (client, interaction) => {
             });
         
             // Fetch the guild using guildId
-            const guild = await client.guilds.fetch('1312775999934562374');
+            const guild = await client.guilds.fetch(ADMIN_TARGET_SERVER_ID);
         
             // Create a channel for this transaction
             const categoryName = transaction.userType === 'Free' ? 'Free' : 'Premium';
