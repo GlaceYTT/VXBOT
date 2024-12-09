@@ -1100,94 +1100,121 @@ module.exports = async (client, interaction) => {
         }
         const [action, rating, transactionId] = interaction.customId.split('_');
         if (action !== 'rate') return;
-    
-        // Disable buttons after submission
+        
+        // Disable buttons after rating submission
         const row = new ActionRowBuilder().addComponents(
             interaction.message.components[0].components.map((button) =>
                 ButtonBuilder.from(button).setDisabled(true)
             )
         );
-    
+        
         // Acknowledge the interaction and disable buttons
         await interaction.update({ components: [row] });
-    
-        // Save the rating to the database
-        const transaction = await Transaction.findById(transactionId);
-        if (!transaction) return;
-    
-        const transactionFlow =
-            transaction.sendingCryptoType && transaction.receiveCurrency
-                ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receiveCurrency} (Currency)`
-                : transaction.sendCurrency && transaction.receiveCurrency
-                ? `${transaction.sendCurrency} (Currency) → ${transaction.receiveCurrency} (Currency)`
-                : transaction.sendingCryptoType && transaction.receivingCryptoType
-                ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receivingCryptoType} (Crypto)`
-                : transaction.sendCurrency && transaction.receivingCryptoType
-                ? `${transaction.sendCurrency} (Currency) → ${transaction.receivingCryptoType} (Crypto)`
-                : 'Transaction flow data not available';
-    
-        const newRating = new Rating({
-            transactionId: transaction._id,
-            userId: transaction.userId,
-            username: transaction.username,
-            userType: transaction.userType,
-            transactionFlow: transactionFlow,
-            rating: parseInt(rating, 10),
-        });
-    
-        await newRating.save();
-    
-        // Notify the user about the rating submission
+        
+        // Prompt the user for feedback
         await interaction.followUp({
-            content: `Thank you for rating this transaction with ${rating} ⭐!`,
+            content: `Thank you for rating this transaction with ${rating} ⭐! Please type your feedback below to let us know about your experience.`,
             ephemeral: true,
         });
-    
-        // Send the rating details to a specific guild and channel
-        const guildId = RATING_GUILD_ID; // Replace with your guild ID
-        const channelId = RATING_CHANNEL_ID; // Replace with your channel ID
-    
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild) {
-            console.error(`Guild with ID ${guildId} not found.`);
-            return;
-        }
-    
-        const channel = guild.channels.cache.get(channelId);
-        if (!channel || channel.type !== ChannelType.GuildText) {
-            console.error(`Channel with ID ${channelId} not found or is not a text channel.`);
-            return;
-        }
-    
-        const starRating = '⭐'.repeat(rating); // Generate stars dynamically based on the rating
-
-        const ratingEmbed = new EmbedBuilder()
-            .setAuthor({
-                name: 'New Transaction Rating Submitted',
-                iconURL: interfaceIcons.ratingIcon,
-            })
-            .setDescription(
-                `- A user has rated their transaction! Here's a summary:\n\n` +
-                `**User:** <@${transaction.userId}>\n` +
-                `**User Type:** ${transaction.userType === 'Premium' ? '🌟 Premium' : '🆓 Free'}\n` +
-                `**Transaction Flow:** ${transactionFlow}\n\n` +
-                `**Rating:** ${starRating}`
-            )
-            .setColor(0x00AE86)
-            .setFooter({
-                text: 'Thank you for using our service!',
-                iconURL: interfaceIcons.heartIcon,
-            })
-            .setTimestamp();
         
-        try {
-            // Send the embed to the specified channel
-            await channel.send({ embeds: [ratingEmbed] });
-        } catch (error) {
-            console.error(`Failed to send rating details to channel: ${channelId}`, error);
-        }
+        // Create a message collector to capture the user's feedback
+        const filter = (msg) => msg.author.id === interaction.user.id;
+        const collector = interaction.channel.createMessageCollector({ filter, time: 60000, max: 1 });
         
-
+        collector.on('collect', async (msg) => {
+            const feedback = msg.content;
+        
+            // Fetch the transaction details from the database
+            const transaction = await Transaction.findById(transactionId);
+            if (!transaction) {
+                await msg.reply({ content: 'Transaction not found. Please try again.', ephemeral: true });
+                return;
+            }
+        
+            const transactionFlow =
+                transaction.sendingCryptoType && transaction.receiveCurrency
+                    ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receiveCurrency} (Currency)`
+                    : transaction.sendCurrency && transaction.receiveCurrency
+                    ? `${transaction.sendCurrency} (Currency) → ${transaction.receiveCurrency} (Currency)`
+                    : transaction.sendingCryptoType && transaction.receivingCryptoType
+                    ? `${transaction.sendingCryptoType} (Crypto) → ${transaction.receivingCryptoType} (Crypto)`
+                    : transaction.sendCurrency && transaction.receivingCryptoType
+                    ? `${transaction.sendCurrency} (Currency) → ${transaction.receivingCryptoType} (Crypto)`
+                    : 'Transaction flow data not available';
+        
+            // Save the rating and feedback to the database
+            const newRating = new Rating({
+                transactionId: transaction._id,
+                userId: transaction.userId,
+                username: transaction.username,
+                userType: transaction.userType,
+                transactionFlow: transactionFlow,
+                rating: parseInt(rating, 10),
+                feedback: feedback,
+            });
+        
+            await newRating.save();
+        
+            // Notify the user about the successful submission
+            await msg.reply({
+                content: 'Thank you for your feedback! Your response has been recorded.',
+                ephemeral: true,
+            });
+        
+            // Send the rating and feedback to a specific guild and channel
+            const guildId = RATING_GUILD_ID; // Replace with your guild ID
+            const channelId = RATING_CHANNEL_ID; // Replace with your channel ID
+        
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) {
+                console.error(`Guild with ID ${guildId} not found.`);
+                return;
+            }
+        
+            const channel = guild.channels.cache.get(channelId);
+            if (!channel || channel.type !== ChannelType.GuildText) {
+                console.error(`Channel with ID ${channelId} not found or is not a text channel.`);
+                return;
+            }
+        
+            const starRating = '⭐'.repeat(rating); // Generate stars dynamically based on the rating
+        
+            const ratingEmbed = new EmbedBuilder()
+                .setAuthor({
+                    name: 'New Transaction Rating Submitted',
+                    iconURL: interfaceIcons.ratingIcon,
+                })
+                .setDescription(
+                    `- A user has rated their transaction! Here's a summary:\n\n` +
+                    `**User:** <@${transaction.userId}>\n` +
+                    `**User Type:** ${transaction.userType === 'Premium' ? '🌟 Premium' : '🆓 Free'}\n` +
+                    `**Transaction Flow:** ${transactionFlow}\n\n` +
+                    `**Rating:** ${starRating}\n` +
+                    `**Feedback:** ${feedback}`
+                )
+                .setColor(0x00AE86)
+                .setFooter({
+                    text: 'Thank you for using our service!',
+                    iconURL: interfaceIcons.heartIcon,
+                })
+                .setTimestamp();
+        
+            try {
+                // Send the embed to the specified channel
+                await channel.send({ embeds: [ratingEmbed] });
+            } catch (error) {
+                console.error(`Failed to send rating details to channel: ${channelId}`, error);
+            }
+        });
+        
+        collector.on('end', (collected) => {
+            if (collected.size === 0) {
+                interaction.followUp({
+                    content: 'No feedback received. If you have additional thoughts, please reach out to us later!',
+                    ephemeral: true,
+                });
+            }
+        });
       
         
     }
