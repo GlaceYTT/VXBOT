@@ -16,7 +16,7 @@ const cryptos = require('../data/cryptos.json');
 const tempData = require('../data/tempData');
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
-
+const VOUCH_CHANNEL_ID = '1311777230669479946';
 const ADMIN_TARGET_SERVER_ID = '1312775999934562374';
 const RATING_GUILD_ID = '1311305017499848827';
 const RATING_CHANNEL_ID = '1315226548596637756';
@@ -985,7 +985,7 @@ module.exports = async (client, interaction) => {
                     newStatus = 'Completed';
                     userMessage = '<a:read:1312706994242584607> Your transaction has been **Completed**. Thank you!';
                 
-                    const specificChannelId = '1311777230669479946'; // Replace with your specific channel ID.
+                    const specificChannelId = VOUCH_CHANNEL_ID; // Replace with your specific channel ID.
                     const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
                 
                     if (specificChannel) {
