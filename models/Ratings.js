@@ -5,9 +5,11 @@ const ratingSchema = new mongoose.Schema({
     userId: { type: String, required: true },
     username: { type: String, required: true },
     userType: { type: String, enum: ['Free', 'Premium'], required: true },
-    transactionFlow: { type: String, required: true }, // Example: "Crypto → Currency"
-    rating: { type: Number, required: true, min: 1, max: 5 }, // Rating between 1 and 5
+    transactionFlow: { type: String, required: true }, 
+    rating: { type: Number, required: true, min: 1, max: 5 },
+    feedback: { type: String },
     createdAt: { type: Date, default: Date.now },
 });
+
 
 module.exports = mongoose.model('Rating', ratingSchema);
