@@ -1,11 +1,11 @@
 {
     "cryptos": {
         "Bitcoin": {
-            "send": ["Wallet Transfer", "QR Code Scan"],
+            "send": ["BTC Wallet Transfer", "QR Code Scan"],
             "receive": ["Wallet Address", "QR Code Scan"]
         },
         "Ethereum": {
-            "send": ["Wallet Transfer", "Smart Contract Transfer"],
+            "send": ["ETH Wallet Transfer", "Smart Contract Transfer"],
             "receive": ["Wallet Address", "Smart Contract Transfer"]
         },
         "USDT": {
@@ -102,7 +102,8 @@
         }
     },
     "methodDetails": {
-        "Wallet Transfer": "Transfer directly to the recipient's wallet address.",
+        "BTC Wallet Transfer": "WALLET : BTC - 1415135653",
+        "ETH Wallet Transfer": "WALLET ETH - 1516536616316.",
         "QR Code Scan": "Scan the recipient's QR code for payment.",
         "Smart Contract Transfer": "Use Ethereum smart contracts for secure transactions.",
         "TRC-20 Transfer": "Use TRC-20 blockchain for transactions.",
