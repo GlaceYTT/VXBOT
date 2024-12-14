@@ -18,10 +18,10 @@ const cryptos = require('../data/cryptos.json');
 const tempData = require('../data/tempData');
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
-const VOUCH_CHANNEL_ID = '1313135236724293675';
-const ADMIN_TARGET_SERVER_ID = '1311747616429576313';
-const RATING_GUILD_ID = '1311747616429576313';
-const RATING_CHANNEL_ID = '1315214390718369875';
+const VOUCH_CHANNEL_ID = '1311777230669479946';
+const ADMIN_TARGET_SERVER_ID = '1312775999934562374';
+const RATING_GUILD_ID = '1311305017499848827';
+const RATING_CHANNEL_ID = '1315226548596637756';
 module.exports = async (client, interaction) => {
     if (interaction.isCommand()) {
         const command = client.commands.get(interaction.commandName);
