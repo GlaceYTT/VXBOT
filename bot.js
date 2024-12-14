@@ -1,5 +1,6 @@
 // Load required modules
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { ActivityType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
