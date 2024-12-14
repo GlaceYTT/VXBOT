@@ -65,5 +65,3 @@ async function startModmail(client, interaction) {
 
     console.log(`[MODMAIL] New session started for user ${user.tag} (${user.id}).`);
 }
-
-module.exports = { startModmail };
