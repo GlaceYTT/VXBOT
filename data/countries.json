@@ -164,6 +164,6 @@
         "Cash Pickup": "Provide valid government ID.",
         "Wire Transfer": "SWIFT Code required for international transactions.",
         "Credit Card": "Only Visa and MasterCard are supported.",
-        "ACH Transfer": "Provide valid routing and account numbers."
+        "ACH Transfer": "ACH -12415551"
     }
 }
