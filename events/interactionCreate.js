@@ -9,17 +9,19 @@ const {
     ButtonBuilder,
     ButtonStyle
 } = require('discord.js');
+const { ObjectId } = require('mongoose').Types; 
 const Transaction = require('../models/Transaction');
 const Rating = require('../models/Ratings');
+const Modmail = require('../models/Modmail');
 const countries = require('../data/countries.json');
 const cryptos = require('../data/cryptos.json');
 const tempData = require('../data/tempData');
 const interfaceIcons = require('../UI/icons');
 const modmailHandler = require('../handlers/modmailHandler');
-const VOUCH_CHANNEL_ID = '1311777230669479946';
-const ADMIN_TARGET_SERVER_ID = '1312775999934562374';
-const RATING_GUILD_ID = '1311305017499848827';
-const RATING_CHANNEL_ID = '1315226548596637756';
+const VOUCH_CHANNEL_ID = '1313135236724293675';
+const ADMIN_TARGET_SERVER_ID = '1311747616429576313';
+const RATING_GUILD_ID = '1311747616429576313';
+const RATING_CHANNEL_ID = '1315214390718369875';
 module.exports = async (client, interaction) => {
     if (interaction.isCommand()) {
         const command = client.commands.get(interaction.commandName);
@@ -45,7 +47,17 @@ module.exports = async (client, interaction) => {
         
             transaction.type = transactionType;
             await transaction.save();
-        
+            const tempKey = `${user.id}_Pending`;
+            const messageID = tempData.get(tempKey); // Retrieve using consistent key
+            if (!messageID) {
+                console.error('Message ID not found in tempData for key:', tempKey);
+            } else {
+                console.log('Retrieved Message ID from tempData:', messageID);
+            }
+            transaction.embedMessageId = messageID;
+            console.log('Embed Message ID:', messageID);  
+            await transaction.save();
+            console.log('DEBUG: Found Transaction:', transaction);
             const embed = new EmbedBuilder()
                 .setAuthor({ name: 'Select Sending Type', iconURL: interfaceIcons.selectIcon })
                 .setDescription('Choose the type of sending method for your transaction.')
@@ -79,7 +91,8 @@ module.exports = async (client, interaction) => {
             // Update the transaction with the selected sending type
             transaction.type = sendingType; // Update the main type (Currency/Crypto)
             await transaction.save();
-        
+           
+
             if (sendingType === 'Currency') {
                 // Currency flow: Present continent options dynamically
                 const embed = new EmbedBuilder()
@@ -366,54 +379,123 @@ module.exports = async (client, interaction) => {
             await interaction.update({ embeds: [embed], components: [row] });
         }
         
-        
         if (customId === 'select_crypto_receiving_method') {
             const receiveMethod = values[0];
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
         
             if (!transaction) {
-                return interaction.update({ content: 'Transaction not found. Please restart.', components: [] });
+                return interaction.update({
+                    content: 'Transaction not found. Please restart.',
+                    components: [],
+                });
             }
         
-            // Save the receiving method and network
+            // Save the receiving method and network only for crypto flows
             transaction.receiveMethod = receiveMethod;
             transaction.receiveNetwork = receiveMethod.includes('TRC-20') ? 'TRC-20' :
                                          receiveMethod.includes('ERC-20') ? 'ERC-20' :
                                          'Unknown';
-            await transaction.save();
         
+            await transaction.save();
+            
+            // Load method details dynamically from cryptos.json for sending and receiving methods
+            const sendMethodDetails = cryptos.methodDetails[transaction.sendMethod] || 'No details available.';
+            const receiveMethodDetails = cryptos.methodDetails[transaction.receiveMethod] || 'No details available.';
+            
+            // For Currency sending methods, load details from countries.json
+            const currencySendMethodDetails = countries.methodDetails[transaction.sendMethod] || 'No details available.';
+            const currencyReceiveMethodDetails = countries.methodDetails[transaction.receiveMethod] || 'No details available.';
+        
+            // Build embed dynamically based on the flow
+            let description = `**Transaction Summary:**\n\n`;
+        
+            if (transaction.type === 'Crypto') {
+                // Crypto-to-Crypto Flow
+                description +=
+                    `**Sending Information:**\n` +
+                    `- Cryptocurrency: ${transaction.sendingCryptoType || 'Not Set'}\n` +
+                    `- Sending Method: ${transaction.sendMethod || 'Not Set'}\n` +
+                    `- Sending Method Details: ${sendMethodDetails}\n\n` +
+                    `**Receiving Information:**\n` +
+                    `- Cryptocurrency: ${transaction.receivingCryptoType || 'Not Set'}\n` +
+                    `- Receiving Method: ${transaction.receiveMethod || 'Not Set'}\n` +
+                    `- Receiving Network: ${transaction.receiveNetwork || 'Unknown'}\n` +
+                    `- Receiving Method Details: ${receiveMethodDetails}\n\n`;
+        
+                // Set the currency-related fields to 'Not Set' for Crypto-to-Crypto
+                transaction.country = 'Not Set';
+                transaction.sendCurrency = 'Not Set';
+                transaction.receiveCountry = 'Not Set';
+                transaction.receiveCurrency = 'Not Set';
+        
+            } else if (transaction.type === 'Currency') {
+                // Currency-to-Currency Flow
+                const continent = transaction.sendingDetails?.continent || 'Not Set';
+                const country = transaction.country || 'Not Set';
+                const currencyType = transaction.sendCurrency || 'Not Set';
+        
+                description +=
+                    `**Sending Information:**\n` +
+                    `- Continent: ${continent}\n` +
+                    `- Country: ${country}\n` +
+                    `- Currency: ${currencyType}\n` +
+                    `- Sending Method: ${transaction.sendMethod || 'Not Set'}\n` +
+                    `- Sending Method Details: ${currencySendMethodDetails}\n\n` +
+                    `**Receiving Information:**\n` +
+                    `- Cryptocurrency: ${transaction.receivingCryptoType || 'Not Set'}\n` +
+                    `- Receiving Method: ${transaction.receiveMethod || 'Not Set'}\n` +
+                    `- Receiving Network: ${transaction.receiveNetwork || 'Unknown'}\n` +
+                    `- Receiving Method Details: ${currencyReceiveMethodDetails}\n\n`;
+        
+                // Set the crypto-related fields to 'Not Set' for Currency-to-Currency
+                transaction.sendingCryptoType = 'Not Set';
+                transaction.receiveCountry = 'Not Set';
+                transaction.receiveCurrency = 'Not Set';
+            }
+        
+            description += 'Finalize or modify your transaction.';
+        
+            // Prepare the embed
             const embed = new EmbedBuilder()
                 .setAuthor({ name: 'Transaction Summary', iconURL: interfaceIcons.transactionIcon })
-                .setDescription(
-                    `Your transaction details:\n\n` +
-                    `- **Sending Crypto:** ${transaction.sendingCryptoType || 'Not Set'}\n` +
-                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n` +
-                    `- **Receiving Crypto:** ${transaction.receivingCryptoType || 'Not Set'}\n` +
-                    `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
-                    `- **Receiving Network:** ${transaction.receiveNetwork || 'Unknown'}\n\n` +
-                    'Finalize or modify your transaction.'
-                )
+                .setDescription(description)
                 .setColor(0x00AE86);
         
+            // Retrieve the message ID from tempData
+            const tempKey = `${user.id}_Pending`;
+            const messageId = tempData.get(tempKey); // Retrieve using consistent key
+            if (!messageId) {
+                console.error('Message ID not found in tempData for key:', tempKey);
+            } else {
+                console.log('Retrieved Message ID from tempData:', messageId);
+            }
+        
+            // Add buttons for further actions with message.id included in customId
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId('enter_sending_details')
+                    .setCustomId(`enter_sending_details_${messageId}`) // Use messageId for unique identification
                     .setLabel('Enter Sending Details')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
-                    .setCustomId('enter_receiving_details')
+                    .setCustomId(`enter_receiving_details_${messageId}`) // Use messageId for unique identification
                     .setLabel('Enter Receiving Details')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
-                    .setCustomId('finish_transaction')
+                    .setCustomId(`finish_transaction`) // Use messageId for unique identification
                     .setLabel('Finish Transaction')
                     .setStyle(ButtonStyle.Success)
             );
         
-            await interaction.update({ embeds: [embed], components: [row] });
+            // First, defer the reply to ensure it's acknowledged
+            await interaction.deferReply({ ephemeral: false });
+        
+            console.log('DEBUG: Found Transaction:', transaction);
+            await interaction.editReply({ embeds: [embed], components: [row] });
+        
+            console.log('Message ID used in buttons:', messageId);  
         }
         
-        
+
         if (customId === 'select_receiving_continent') {
             const receivingContinent = values[0];
         
@@ -527,7 +609,7 @@ module.exports = async (client, interaction) => {
         
             if (!transaction) {
                 return interaction.update({
-                    content: 'Transaction not found. Please restart the process.',
+                    content: 'Transaction not found. Please restart.',
                     components: [],
                 });
             }
@@ -536,45 +618,142 @@ module.exports = async (client, interaction) => {
             transaction.receiveMethod = receiveMethod;
             await transaction.save();
         
-            const sendMethodDetails = countries.methodDetails[transaction.sendMethod] || 'No details available.';
-            const receiveMethodDetails = countries.methodDetails[transaction.receiveMethod] || 'No details available.';
+            // Detect the flow type (Currency-to-Currency or Crypto-to-Currency)
+            let flowType = '';
         
-            const embed = new EmbedBuilder()
-                .setAuthor({
-                    name: 'Transaction Summary',
-                    iconURL: interfaceIcons.transactionIcon,
-                })
-                .setDescription(
-                    `Your transaction details:\n\n` +
-                    `- **Sending Country:** ${transaction.country || 'Not Set'}\n` +
-                    `- **Sending Currency:** ${transaction.sendCurrency || 'Not Set'}\n` +
-                    `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n\n` +
-                    `- **Details:** ${sendMethodDetails}\n\n` +
-                    `- **Receiving Country:** ${transaction.receiveCountry || 'Not Set'}\n` +
-                    `- **Receiving Currency:** ${transaction.receiveCurrency || 'Not Set'}\n` +
-                    `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
-                    `- **Details:** ${receiveMethodDetails}\n\n` +
-                    'Use the buttons below to enter additional details or finalize the transaction.'
-                )
-                .setColor(0x00AE86);
+            if (transaction.type === 'Currency') {
+                flowType = 'currency_to_currency'; // Currency to Currency
+            } else if (transaction.type === 'Crypto') {
+                flowType = 'crypto_to_currency'; // Crypto to Currency
+            }
         
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('enter_sending_details')
-                    .setLabel('Enter Sending Details')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('enter_receiving_details')
-                    .setLabel('Enter Receiving Details')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('finish_transaction')
-                    .setLabel('Finish Transaction')
-                    .setStyle(ButtonStyle.Success)
-            );
+            console.log('DEBUG: Detected Flow:', flowType);
         
-            if (!interaction.replied) {
-                await interaction.update({ embeds: [embed], components: [row] });
+            let sendMethodDetails, receiveMethodDetails;
+        
+            if (flowType === 'currency_to_currency') {
+                // Prepare embed for Currency-to-Currency
+                sendMethodDetails = countries.methodDetails[transaction.sendMethod] || 'No details available.';
+                receiveMethodDetails = countries.methodDetails[transaction.receiveMethod] || 'No details available.';
+        
+                // Set crypto-related fields as 'Not Set' for Currency-to-Currency
+                transaction.sendingCryptoType = 'Not Set';
+                transaction.receivingCryptoType = 'Not Set';
+        
+                // Prepare the embed with only currency-related information
+                const embed = new EmbedBuilder()
+                    .setAuthor({
+                        name: 'Transaction Summary (Currency-to-Currency)',
+                        iconURL: interfaceIcons.transactionIcon,
+                    })
+                    .setDescription(
+                        `Your transaction details:\n\n` +
+                        `**Sending Information:**\n` +
+                        `- **Sending Currency:** ${transaction.sendCurrency || 'Not Set'}\n` +
+                        `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n` +
+                        `- **Details:** ${sendMethodDetails}\n\n` +
+                        `**Receiving Information:**\n` +
+                        `- **Receiving Currency:** ${transaction.receiveCurrency || 'Not Set'}\n` +
+                        `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
+                        `- **Details:** ${receiveMethodDetails}\n\n` +
+                        'Use the buttons below to enter additional details or finalize the transaction.'
+                    )
+                    .setColor(0x00AE86);
+        
+                // Retrieve the message ID from tempData
+                const tempKey = `${user.id}_Pending`;
+                const messageId = tempData.get(tempKey); // Retrieve using consistent key
+                if (!messageId) {
+                    console.error('Message ID not found in tempData for key:', tempKey);
+                } else {
+                    console.log('Retrieved Message ID from tempData:', messageId);
+                }
+        
+                // Add buttons for further actions with message.id included in customId
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`enter_sending_details_${messageId}`) // Use messageId for unique identification
+                        .setLabel('Enter Sending Details')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`enter_receiving_details_${messageId}`) // Use messageId for unique identification
+                        .setLabel('Enter Receiving Details')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`finish_transaction`) // Use messageId for unique identification
+                        .setLabel('Finish Transaction')
+                        .setStyle(ButtonStyle.Success)
+                );
+        
+                // First, defer the reply to ensure it's acknowledged
+                await interaction.deferReply({ ephemeral: false });
+        
+                console.log('DEBUG: Found Transaction:', transaction);
+                await interaction.editReply({ embeds: [embed], components: [row] });
+        
+                console.log('Message ID used in buttons:', messageId);  // Check the saved message ID
+        
+            } else if (flowType === 'crypto_to_currency') {
+                // Prepare embed for Crypto-to-Currency
+                sendMethodDetails = cryptos.methodDetails[transaction.sendMethod] || 'No details available.';
+                receiveMethodDetails = countries.methodDetails[transaction.receiveMethod] || 'No details available.';
+        
+                // Set country-related fields as 'Not Set' for Crypto-to-Currency
+                transaction.country = 'Not Set';
+                transaction.sendCurrency = 'Not Set';
+                transaction.receivingCryptoType = 'Not Set';
+                // Prepare the embed with only crypto-related information
+                const embed = new EmbedBuilder()
+                    .setAuthor({
+                        name: 'Transaction Summary (Crypto-to-Currency)',
+                        iconURL: interfaceIcons.transactionIcon,
+                    })
+                    .setDescription(
+                        `Your transaction details:\n\n` +
+                        `**Sending Information:**\n` +
+                        `- **Sending Cryptocurrency:** ${transaction.sendingCryptoType || 'Not Set'}\n` +
+                        `- **Sending Method:** ${transaction.sendMethod || 'Not Set'}\n` +
+                        `- **Details:** ${sendMethodDetails}\n\n` +
+                        `**Receiving Information:**\n` +
+                        `- **Receiving Currency:** ${transaction.receiveCurrency || 'Not Set'}\n` +
+                        `- **Receiving Method:** ${transaction.receiveMethod || 'Not Set'}\n` +
+                        `- **Details:** ${receiveMethodDetails}\n\n` +
+                        'Use the buttons below to enter additional details or finalize the transaction.'
+                    )
+                    .setColor(0x00AE86);
+        
+                // Retrieve the message ID from tempData
+                const tempKey = `${user.id}_Pending`;
+                const messageId = tempData.get(tempKey); // Retrieve using consistent key
+                if (!messageId) {
+                    console.error('Message ID not found in tempData for key:', tempKey);
+                } else {
+                    console.log('Retrieved Message ID from tempData:', messageId);
+                }
+        
+                // Add buttons for further actions with message.id included in customId
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`enter_sending_details_${messageId}`) // Use messageId for unique identification
+                        .setLabel('Enter Sending Details')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`enter_receiving_details_${messageId}`) // Use messageId for unique identification
+                        .setLabel('Enter Receiving Details')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`finish_transaction`) // Use messageId for unique identification
+                        .setLabel('Finish Transaction')
+                        .setStyle(ButtonStyle.Success)
+                );
+        
+                // First, defer the reply to ensure it's acknowledged
+                await interaction.deferReply({ ephemeral: false });
+        
+                console.log('DEBUG: Found Transaction:', transaction);
+                await interaction.editReply({ embeds: [embed], components: [row] });
+        
+                console.log('Message ID used in buttons:', messageId);  // Check the saved message ID
             }
         }
         
@@ -587,58 +766,171 @@ module.exports = async (client, interaction) => {
         //console.log('[BUTTON INTERACTION]', interaction.customId);
 
         // Route the button interaction based on its custom ID
-        if (interaction.customId === 'start_modmail') {
-            await modmailHandler.startModmail(client, interaction);
-        }
+        if (customId === 'modmail_start_yes' || customId === 'start_modmail') {
+            // Check for active session
+            let modmail = await Modmail.findOne({ userId: user.id, status: 'Open' });
 
-        if (customId === 'enter_sending_details') {
-            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+            if (modmail) {
+                return interaction.reply({ content: 'You already have an active modmail session.', ephemeral: true });
+            }
+
+            // Create new modmail channel
+            const guild = client.guilds.cache.get('1311747616429576313'); // Replace with your server ID
+            const modmailCategory = guild.channels.cache.find(c => c.name === 'Modmail' && c.type === 4);
+
+            if (!modmailCategory) {
+                return interaction.reply({
+                    content: 'Modmail system is currently unavailable. Please contact an admin.',
+                    ephemeral: true,
+                });
+            }
+
+            const channel = await guild.channels.create({
+                name: `modmail-${user.username}`,
+                type: 0,
+                parent: modmailCategory.id,
+                permissionOverwrites: [
+                    { id: guild.id, deny: ['ViewChannel'] },
+                    { id: user.id, allow: ['ViewChannel', 'SendMessages'] },
+                ],
+            });
+
+            // Save to database
+            modmail = new Modmail({
+                userId: user.id,
+                username: user.username,
+                channelId: channel.id,
+                status: 'Open',
+            });
+            await modmail.save();
+
+            // Notify the user
+            const userEmbed = new EmbedBuilder()
+                .setTitle('Modmail Started')
+                .setDescription('You can now communicate with the support team here.')
+                .setColor('Green');
+
+            await interaction.reply({ content: 'Modmail session started!', ephemeral: true });
+            await user.send({ embeds: [userEmbed] }).catch(console.error);
+
+            // Notify staff in the modmail channel
+            const staffEmbed = new EmbedBuilder()
+                .setTitle('New Modmail Session')
+                .setDescription(`Modmail session started with ${user.tag}.`)
+                .setColor('Blue');
+
+            await channel.send({ embeds: [staffEmbed] });
+        } else if (customId === 'modmail_start_no') {
+            await interaction.reply({ content: 'Modmail session was not started.', ephemeral: true });
+        }
+        if (customId.startsWith('enter_sending_details')) {
+            const parts = customId.split('_');
+            const embedId = parts[parts.length - 1]; // Ensure the last part is the embedId (messageId)
+        
+            console.log('DEBUG: Extracted embedId:', embedId);
+        
+            // Validate the extracted embedId
+            if (!/^\d{16,19}$/.test(embedId)) {
+                return interaction.reply({
+                    content: 'Invalid embed ID. Please restart the process.',
+                    ephemeral: true,
+                });
+            }
+        
+            // Fetch the transaction using embedId
+            const transaction = await Transaction.findOne({ embedMessageId: embedId });
         
             if (!transaction) {
-                console.log('DEBUG: No pending transaction found for user:', user.id);
                 return interaction.reply({
-                    content: 'No pending transaction found. Please restart the process.',
+                    content: 'Transaction not found. Please restart the process.',
                     ephemeral: true,
                 });
             }
         
             console.log('DEBUG: Found Transaction:', transaction);
         
-            // Detect the flow
-            const isCryptoToCrypto = transaction.sendingCryptoType && transaction.receivingCryptoType;
-            const isCryptoToCurrency = transaction.sendingCryptoType && transaction.receiveCountry;
-            const isCurrencyToCrypto = transaction.currency && transaction.receivingCryptoType;
-            const isCurrencyToCurrency = transaction.currency && transaction.receiveCountry;
-        
+            // Determine flow type based on fields in the transaction object
             let flowType = '';
-            if (isCryptoToCrypto) flowType = 'crypto_to_crypto';
-            else if (isCryptoToCurrency) flowType = 'crypto_to_currency';
-            else if (isCurrencyToCrypto) flowType = 'currency_to_crypto';
-            else if (isCurrencyToCurrency) flowType = 'currency_to_currency';
+            const fields = {
+                sendMethod: transaction.sendMethod,
+                receiveMethod: transaction.receiveMethod,
+                sendingCryptoType: transaction.sendingCryptoType,
+                receivingCryptoType: transaction.receivingCryptoType,
+                country: transaction.country,
+                receiveCountry: transaction.receiveCountry,
+                sendCurrency: transaction.sendCurrency,
+                receiveCurrency: transaction.receiveCurrency,
+            };
+        
+            // Match fields and determine the flow
+            if (fields.sendingCryptoType && fields.receivingCryptoType) {
+                flowType = 'crypto_to_crypto';
+            } else if (fields.sendingCryptoType && fields.receiveCountry) {
+                flowType = 'crypto_to_currency';
+            } else if (fields.sendCurrency && fields.receivingCryptoType) {
+                flowType = 'currency_to_crypto';
+            } else if (fields.sendCurrency && fields.receiveCountry) {
+                flowType = 'currency_to_currency';
+            } else {
+                flowType = 'unknown';
+            }
         
             console.log('DEBUG: Detected Flow:', flowType);
         
-            // Select dataset based on the flow
-            const dataset =
-                flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency'
-                    ? cryptos.cryptoModalQuestions
-                    : countries.modalQuestions;
+            let dataset, identifier, questions;
         
-            console.log('DEBUG: Selected Dataset:', dataset);
+            // Dynamically load questions based on flow type and field matches
+            switch (flowType) {
+                case 'crypto_to_currency':
+                    // Set the irrelevant fields to 'Not Set' for crypto to currency
+                    transaction.country = 'Not Set';
+                    transaction.sendCurrency = 'Not Set';
+                    transaction.receivingCryptoType = 'Not Set';
         
-            // Resolve the identifier
-            let identifier;
-            if (flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency') {
-                identifier = transaction.sendingCryptoType; // Use Crypto type
-            } else {
-                identifier = transaction.country; // Use Country for currency transactions
+                    dataset = cryptos.cryptoModalQuestions;
+                    identifier = fields.sendingCryptoType; // Use sendingCryptoType as the identifier
+                    questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
+                    break;
+        
+                case 'currency_to_currency':
+                    // Set the irrelevant fields to 'Not Set' for currency to currency
+                    transaction.sendingCryptoType = 'Not Set';
+                    transaction.receivingCryptoType = 'Not Set';
+        
+                    dataset = countries.modalQuestions;
+                    identifier = fields.sendCurrency; // Use sendCurrency as the identifier
+                    questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
+                    break;
+        
+                case 'crypto_to_crypto':
+                    // Set the irrelevant fields to 'Not Set' for crypto to crypto
+                    transaction.country = 'Not Set';
+                    transaction.sendCurrency = 'Not Set';
+                    transaction.receiveCountry = 'Not Set';
+                    transaction.receiveCurrency = 'Not Set';
+        
+                    dataset = cryptos.cryptoModalQuestions;
+                    identifier = fields.sendingCryptoType; // Use sendingCryptoType as the identifier
+                    questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
+                    break;
+        
+                case 'currency_to_crypto':
+                    // Set the irrelevant fields to 'Not Set' for currency to crypto
+                    transaction.sendingCryptoType = 'Not Set';
+                    transaction.receiveCountry = 'Not Set';
+                    transaction.receiveCurrency = 'Not Set';
+        
+                    dataset = countries.modalQuestions;
+                    identifier = fields.sendCurrency; // Use sendCurrency as the identifier
+                    questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
+                    break;
+        
+                default:
+                    return interaction.reply({
+                        content: 'Invalid transaction flow detected. Please restart the process.',
+                        ephemeral: true,
+                    });
             }
-        
-            console.log('DEBUG: Identifier for Sending Details:', identifier);
-        
-            // Fetch questions from the dataset
-            const questions = dataset?.sendingDetails?.[identifier] || dataset?.sendingDetails?.default || [];
-            console.log('DEBUG: Questions for Sending Details:', questions);
         
             if (!questions.length) {
                 return interaction.reply({
@@ -648,72 +940,118 @@ module.exports = async (client, interaction) => {
             }
         
             // Build and show the modal
-            const modal = new ModalBuilder()
-                .setCustomId('sending_details_modal')
-                .setTitle(`Enter Sending Details for ${identifier || 'Details'}`);
-        
-            questions.forEach((question) => {
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId(question.id)
-                            .setLabel(question.label)
-                            .setStyle(TextInputStyle.Short)
-                            .setRequired(question.required)
-                    )
-                );
-            });
-        
+            const modal = buildModal('sending_details_modal', `Enter Sending Details for ${identifier || 'Details'}`, questions);
             await interaction.showModal(modal);
         }
         
+        if (customId.startsWith('enter_receiving_details')) {
+            const parts = customId.split('_');
+            const embedId = parts[parts.length - 1]; // Ensure the last part is the embedId (messageId)
         
-        if (customId === 'enter_receiving_details') {
-            const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
+            console.log('DEBUG: Extracted embedId:', embedId);
+        
+            // Validate the extracted embedId
+            if (!/^\d{16,19}$/.test(embedId)) {
+                return interaction.reply({
+                    content: 'Invalid embed ID. Please restart the process.',
+                    ephemeral: true,
+                });
+            }
+        
+            // Fetch the transaction using embedId
+            const transaction = await Transaction.findOne({ embedMessageId: embedId });
         
             if (!transaction) {
-                console.log('DEBUG: No pending transaction found for user:', user.id);
                 return interaction.reply({
-                    content: 'No pending transaction found. Please restart the process.',
+                    content: 'Transaction not found. Please restart the process.',
                     ephemeral: true,
                 });
             }
         
             console.log('DEBUG: Found Transaction:', transaction);
         
-            // Detect the flow
-            const isCryptoToCrypto = transaction.sendingCryptoType && transaction.receivingCryptoType;
-            const isCryptoToCurrency = transaction.sendingCryptoType && transaction.receiveCountry;
-            const isCurrencyToCrypto = transaction.currency && transaction.receivingCryptoType;
-            const isCurrencyToCurrency = transaction.currency && transaction.receiveCountry;
-        
+            // Determine flow type based on fields in the transaction object
             let flowType = '';
-            if (isCryptoToCrypto) flowType = 'crypto_to_crypto';
-            else if (isCryptoToCurrency) flowType = 'crypto_to_currency';
-            else if (isCurrencyToCrypto) flowType = 'currency_to_crypto';
-            else if (isCurrencyToCurrency) flowType = 'currency_to_currency';
+            const fields = {
+                sendMethod: transaction.sendMethod,
+                receiveMethod: transaction.receiveMethod,
+                sendingCryptoType: transaction.sendingCryptoType,
+                receivingCryptoType: transaction.receivingCryptoType,
+                country: transaction.country,
+                receiveCountry: transaction.receiveCountry,
+                sendCurrency: transaction.sendCurrency,
+                receiveCurrency: transaction.receiveCurrency,
+            };
+        
+            // Match fields and determine the flow
+            if (fields.sendingCryptoType && fields.receivingCryptoType) {
+                flowType = 'crypto_to_crypto';
+            } else if (fields.sendingCryptoType && fields.receiveCountry) {
+                flowType = 'crypto_to_currency';
+            } else if (fields.sendCurrency && fields.receivingCryptoType) {
+                flowType = 'currency_to_crypto';
+            } else if (fields.sendCurrency && fields.receiveCountry) {
+                flowType = 'currency_to_currency';
+            } else {
+                flowType = 'unknown';
+            }
         
             console.log('DEBUG: Detected Flow:', flowType);
         
-            // Select dataset based on the flow
-            const dataset =
-                flowType === 'crypto_to_crypto' ? cryptos.cryptoModalQuestions : countries.modalQuestions;
+            let dataset, identifier, questions;
         
-            console.log('DEBUG: Selected Dataset:', dataset);
+            // Dynamically load questions based on flow type and field matches
+            switch (flowType) {
+                case 'crypto_to_currency':
+                    // Set the irrelevant fields to 'Not Set' for crypto to currency
+                    transaction.country = 'Not Set';
+                    transaction.sendCurrency = 'Not Set';
+                    transaction.receivingCryptoType = 'Not Set';
         
-            // Resolve the identifier
-            let identifier;
-            if (flowType === 'crypto_to_crypto' || flowType === 'crypto_to_currency') {
-                identifier = transaction.receivingCryptoType || transaction.receiveCountry;
-            } else {
-                identifier = transaction.receiveCountry;
+                    dataset = cryptos.cryptoModalQuestions;
+                    identifier = fields.receivingCryptoType; // Use receivingCryptoType as the identifier
+                    questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
+                    break;
+        
+                case 'currency_to_currency':
+                    // Set the irrelevant fields to 'Not Set' for currency to currency
+                    transaction.sendingCryptoType = 'Not Set';
+                    transaction.receivingCryptoType = 'Not Set';
+        
+                    dataset = countries.modalQuestions;
+                    identifier = fields.receiveCountry; // Use receiveCountry as the identifier
+                    questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
+                    break;
+        
+                case 'crypto_to_crypto':
+                    // Set the irrelevant fields to 'Not Set' for crypto to crypto
+                    transaction.country = 'Not Set';
+                    transaction.sendCurrency = 'Not Set';
+                    transaction.receiveCountry = 'Not Set';
+                    transaction.receiveCurrency = 'Not Set';
+        
+                    dataset = cryptos.cryptoModalQuestions;
+                    identifier = fields.receivingCryptoType; // Use receivingCryptoType as the identifier
+                    questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
+                    break;
+        
+                case 'currency_to_crypto':
+                    // Set the irrelevant fields to 'Not Set' for currency to crypto
+                    transaction.sendingCryptoType = 'Not Set';
+                    transaction.receiveCountry = 'Not Set';
+                    transaction.receiveCurrency = 'Not Set';
+        
+                    dataset = cryptos.cryptoModalQuestions;
+                    identifier = fields.receiveCountry; // Use receiveCountry as the identifier
+                    questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
+                    break;
+        
+                default:
+                    return interaction.reply({
+                        content: 'Invalid transaction flow detected. Please restart the process.',
+                        ephemeral: true,
+                    });
             }
-        
-            console.log('DEBUG: Identifier for Receiving Details:', identifier);
-        
-            // Fetch questions from the dataset
-            const questions = dataset?.receivingDetails?.[identifier] || dataset?.receivingDetails?.default || [];
-            console.log('DEBUG: Questions for Receiving Details:', questions);
         
             if (!questions.length) {
                 return interaction.reply({
@@ -723,9 +1061,13 @@ module.exports = async (client, interaction) => {
             }
         
             // Build and show the modal
-            const modal = new ModalBuilder()
-                .setCustomId('receiving_details_modal')
-                .setTitle(`Enter Receiving Details for ${identifier || 'Details'}`);
+            const modal = buildModal('receiving_details_modal', `Enter Receiving Details for ${identifier || 'Details'}`, questions);
+            await interaction.showModal(modal);
+        }
+        
+        // Helper function to build a modal dynamically
+        function buildModal(customId, title, questions) {
+            const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
         
             questions.forEach((question) => {
                 modal.addComponents(
@@ -739,11 +1081,9 @@ module.exports = async (client, interaction) => {
                 );
             });
         
-            await interaction.showModal(modal);
-        }
-        
-        
-        
+            return modal;
+        }        
+               
           if (customId === 'finish_transaction') {
             const transaction = await Transaction.findOne({ userId: user.id, status: 'Pending' });
 
@@ -941,17 +1281,19 @@ module.exports = async (client, interaction) => {
         }
 
         if (['mark_processing', 'mark_on_hold', 'mark_completed', 'mark_canceled', 'mark_as_read'].includes(customId)) {
+            await interaction.deferReply({ ephemeral: true });
+        
             const adminChannel = interaction.channel;
         
             if (!adminChannel.topic) {
-                return interaction.reply({ content: 'This channel is not linked to a transaction.', ephemeral: true });
+                return interaction.followUp({ content: 'This channel is not linked to a transaction.', ephemeral: true });
             }
         
             const transactionId = adminChannel.topic.split('Transaction ID: ')[1];
             const transaction = await Transaction.findById(transactionId);
         
             if (!transaction) {
-                return interaction.reply({ content: 'Transaction not found.', ephemeral: true });
+                return interaction.followUp({ content: 'Transaction not found.', ephemeral: true });
             }
         
             let newStatus, userMessage;
@@ -968,7 +1310,7 @@ module.exports = async (client, interaction) => {
                 case 'mark_completed':
                     newStatus = 'Completed';
                     userMessage = '<a:read:1312706994242584607> Your transaction has been **Completed**. Thank you!';
-                
+
                     const specificChannelId = VOUCH_CHANNEL_ID; // Replace with your specific channel ID.
                     const specificChannel = await client.channels.fetch(specificChannelId).catch(console.error);
                 
@@ -1047,7 +1389,7 @@ module.exports = async (client, interaction) => {
             try {
                 // Fetch the user to notify
                 const userToNotify = await client.users.fetch(transaction.userId);
-            
+        
                 // Determine the embed color based on status
                 const embedColor =
                     newStatus === 'Completed' ? 0x00FF00 :
@@ -1056,7 +1398,7 @@ module.exports = async (client, interaction) => {
                     newStatus === 'On Hold' ? 0xFFA500 : // Orange for on-hold
                     newStatus === 'Read' ? 0x0000FF : // Blue for read
                     0x00AE86; // Default color
-            
+        
                 // Construct the embed message
                 const userEmbed = new EmbedBuilder()
                     .setAuthor({
@@ -1078,28 +1420,34 @@ module.exports = async (client, interaction) => {
                     })
                     .setColor(embedColor)
                     .setTimestamp();
-
-            
-                const row = new ActionRowBuilder().addComponents(
-                                [1, 2, 3, 4, 5].map((rating) =>
-                                    new ButtonBuilder()
-                                        .setCustomId(`rate_${rating}_${transaction._id}`) // Custom ID for identifying the rating
-                                        .setLabel(`${rating} ⭐`)
-                                        .setStyle(ButtonStyle.Secondary)
-                                )
-                            );
-                    
-                await user.send({ embeds: [userEmbed], components: [row] });
-            
+        
+                const components = [];
+                if (newStatus === 'Completed') {
+                    const row = new ActionRowBuilder().addComponents(
+                        [1, 2, 3, 4, 5].map((rating) =>
+                            new ButtonBuilder()
+                                .setCustomId(`rate_${rating}_${transaction._id}`) // Custom ID for identifying the rating
+                                .setLabel(`${rating} ⭐`)
+                                .setStyle(ButtonStyle.Secondary)
+                        )
+                    );
+                    components.push(row);
+                }
+        
+                await userToNotify.send({ embeds: [userEmbed], components });
             } catch (error) {
                 console.error(`Failed to send DM to user: ${transaction.userId}`, error);
             }
-            
         
-            await interaction.reply({ content: `Transaction status updated to **${newStatus}** and the user has been notified.`, ephemeral: true });
+            await interaction.followUp({ content: `Transaction status updated to **${newStatus}** and the user has been notified.`, ephemeral: true });
         }
+        
+        // Handle rating interactions
         const [action, rating, transactionId] = interaction.customId.split('_');
         if (action !== 'rate') return;
+        
+        // Defer the reply to the rating interaction
+        await interaction.deferUpdate();
         
         // Disable buttons after rating submission
         const row = new ActionRowBuilder().addComponents(
@@ -1108,27 +1456,25 @@ module.exports = async (client, interaction) => {
             )
         );
         
-        // Acknowledge the interaction and disable buttons
-        await interaction.update({ components: [row] });
+        // Update the message to disable the buttons
+        await interaction.editReply({ components: [row] });
         
-        // Prompt the user for feedback
+        // Follow-up prompting user feedback
         await interaction.followUp({
             content: `Thank you for rating this transaction with ${rating} ⭐! Please type your feedback below to let us know about your experience.`,
             ephemeral: true,
         });
         
-        // Create a message collector to capture the user's feedback
+        // Collector for user feedback
         const filter = (msg) => msg.author.id === interaction.user.id;
         const collector = interaction.channel.createMessageCollector({ filter, time: 60000, max: 1 });
         
         collector.on('collect', async (msg) => {
             const feedback = msg.content;
         
-            // Fetch the transaction details from the database
             const transaction = await Transaction.findById(transactionId);
             if (!transaction) {
-                await msg.reply({ content: 'Transaction not found. Please try again.', ephemeral: true });
-                return;
+                return msg.reply({ content: 'Transaction not found. Please try again.', ephemeral: true });
             }
         
             const transactionFlow =
@@ -1142,7 +1488,7 @@ module.exports = async (client, interaction) => {
                     ? `${transaction.sendCurrency} (Currency) → ${transaction.receivingCryptoType} (Crypto)`
                     : 'Transaction flow data not available';
         
-            // Save the rating and feedback to the database
+            // Save the feedback and rating
             const newRating = new Rating({
                 transactionId: transaction._id,
                 userId: transaction.userId,
@@ -1155,13 +1501,9 @@ module.exports = async (client, interaction) => {
         
             await newRating.save();
         
-            // Notify the user about the successful submission
-            await msg.reply({
-                content: 'Thank you for your feedback! Your response has been recorded.',
-                ephemeral: true,
-            });
+            await msg.reply({ content: 'Thank you for your feedback! Your response has been recorded.', ephemeral: true });
         
-            // Send the rating and feedback to a specific guild and channel
+            // Send feedback to a specified channel in your guild
             const guildId = RATING_GUILD_ID; // Replace with your guild ID
             const channelId = RATING_CHANNEL_ID; // Replace with your channel ID
         
@@ -1177,7 +1519,7 @@ module.exports = async (client, interaction) => {
                 return;
             }
         
-            const starRating = '⭐'.repeat(rating); // Generate stars dynamically based on the rating
+            const starRating = '⭐'.repeat(rating);
         
             const ratingEmbed = new EmbedBuilder()
                 .setAuthor({
@@ -1200,7 +1542,6 @@ module.exports = async (client, interaction) => {
                 .setTimestamp();
         
             try {
-                // Send the embed to the specified channel
                 await channel.send({ embeds: [ratingEmbed] });
             } catch (error) {
                 console.error(`Failed to send rating details to channel: ${channelId}`, error);
@@ -1208,13 +1549,11 @@ module.exports = async (client, interaction) => {
         });
         
         collector.on('end', (collected) => {
-            if (collected.size === 0) {
-                interaction.followUp({
-                    content: 'No feedback received. If you have additional thoughts, please reach out to us later!',
-                    ephemeral: true,
-                });
+            if (!collected.size) {
+                interaction.followUp({ content: 'No feedback received. If you have additional thoughts, please reach out to us later!', ephemeral: true });
             }
         });
+        
       
         
     }
@@ -1282,4 +1621,3 @@ module.exports = async (client, interaction) => {
     }
     
 };
-
