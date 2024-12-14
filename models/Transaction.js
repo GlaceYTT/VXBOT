@@ -14,7 +14,7 @@ const transactionSchema = new mongoose.Schema({
     sendMethod: String,
     receiveMethod: String,
     amount: Number,
-    paymentMethod: String,
+    paymentMethod: String, 
     transactionId: String,
     status: String,
     type: { type: String, enum: ['Currency', 'Crypto'] }, 
@@ -26,6 +26,7 @@ const transactionSchema = new mongoose.Schema({
     receivingDetails: { type: Object, default: {} }, 
     userType: { type: String, enum: ['Free', 'Premium'], default: 'Free' },
     createdAt: { type: Date, default: Date.now },
+    embedMessageId: String ,
 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);
