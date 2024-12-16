@@ -18,12 +18,6 @@ module.exports = {
         .setDescription('Initiate a currency or cryptocurrency exchange transaction.'),
 
     async execute(interaction) {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({
-                content: 'You do not have permission to use this command. Only Administrators can execute this command.',
-                ephemeral: true,
-            });
-        }
         const user = interaction.user;
         const guild = interaction.guild;
 
